@@ -34,7 +34,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.0.2"
+          "text": "0.0.2-1"
         },
         {
           "class": "DepictionTableTextView",
@@ -61,6 +61,20 @@
       "tabname": "Changelog",
       "class": "DepictionStackView",
       "views": [
+        {
+          "class": "DepictionSubheaderView",
+          "title": "Version 0.0.2-1 - Beta 1 Hotfix",
+          "useBoldText": true,
+          "useBottomMargin": false
+        },
+        {
+          "class": "DepictionMarkdownTextView",
+          "markdown": "• Added arm64e support for newer devices",
+          "useSpacing": false
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
         {
           "class": "DepictionSubheaderView",
           "title": "Version 0.0.2 - Beta 1",

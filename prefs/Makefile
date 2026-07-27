@@ -1,4 +1,4 @@
-ARCHS = arm64
+ARCHS = arm64 arm64e
 
 include $(THEOS)/makefiles/common.mk
 
@@ -16,4 +16,3 @@ include $(THEOS_MAKE_PATH)/bundle.mk
 after-CCAsterPrefs-stage::
 	$(ECHO_NOTHING)mkdir -p "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences"$(ECHO_END)
 	$(ECHO_NOTHING)cp "Resources/CCAsterPrefs.plist" "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences/CCAsterPrefs.plist"$(ECHO_END)
-

@@ -8,17 +8,11 @@
       "tabname": "Details",
       "class": "DepictionStackView",
       "views": [
-        {
-          "class": "DepictionSubheaderView",
-          "title": "A modern, editable Control Center experience for iOS 16.",
-          "useBoldText": false,
-          "useBottomMargin": true
-        },
-        {
-          "class": "DepictionMarkdownTextView",
-          "markdown": "Arrange and resize controls on an 8x4 grid, add controls from CCAster's custom sheet, move between multiple pages, and reach editing and power actions from the Control Center header.",
-          "useSpacing": true
-        },
+                {
+                    "class": "DepictionMarkdownView",
+                    "markdown": "A modern, editable Control Center experience for iOS 16.\n\nArrange and resize controls on an 8x4 grid, add controls from CCAster's custom sheet, move between multiple pages, and reach editing and power actions from the Control Center header.",
+                    "useSpacing": true
+                },
         {
           "class": "DepictionSeparatorView"
         },
@@ -32,9 +26,9 @@
           "text": "Futur3Sn0w"
         },
         {
-          "class": "DepictionTableTextView",
-          "title": "Version",
-          "text": "0.0.2-1"
+                    "class": "DepictionTableTextView",
+                    "title": "Version",
+                    "text": "0.2.1"
         },
         {
           "class": "DepictionTableTextView",
@@ -59,16 +53,35 @@
     },
     {
       "tabname": "Changelog",
-      "class": "DepictionStackView",
-      "views": [
-        {
-          "class": "DepictionSubheaderView",
-          "title": "Version 0.0.2-1 - Beta 1 Hotfix",
+            "class": "DepictionStackView",
+            "views": [
+                {
+                    "class": "DepictionSubheaderView",
+                    "title": "Version 0.2.1",
+                    "useBoldText": true,
+                    "useBottomMargin": false
+                },
+                {
+                    "class": "DepictionMarkdownView",
+                    "markdown": "• Fixed 3D-touch modules expanding while in edit mode",
+                    "useSpacing": false
+                },
+                {
+                    "class": "DepictionMarkdownView",
+                    "markdown": "• Fixed modules trying to fight dragging to move while in edit mode",
+                    "useSpacing": false
+                },
+                {
+                    "class": "DepictionSeparatorView"
+                },
+                {
+                    "class": "DepictionSubheaderView",
+                    "title": "Version 0.0.2-1 - Beta 1 Hotfix",
           "useBoldText": true,
           "useBottomMargin": false
         },
         {
-          "class": "DepictionMarkdownTextView",
+                    "class": "DepictionMarkdownView",
           "markdown": "• Added arm64e support for newer devices",
           "useSpacing": false
         },
@@ -82,17 +95,17 @@
           "useBottomMargin": false
         },
         {
-          "class": "DepictionMarkdownTextView",
+                    "class": "DepictionMarkdownView",
           "markdown": "• Added editable multi-page 8x4 Control Center layouts",
           "useSpacing": false
         },
         {
-          "class": "DepictionMarkdownTextView",
+                    "class": "DepictionMarkdownView",
           "markdown": "• Added CCAster's control sheet, module resizing, and Quick Access Buttons",
           "useSpacing": false
         },
         {
-          "class": "DepictionMarkdownTextView",
+                    "class": "DepictionMarkdownView",
           "markdown": "• Added an option to preserve saved pages while limiting Control Center to page one",
           "useSpacing": false
         }

@@ -56,6 +56,8 @@ static NSUInteger const kCCAMaxPages = 9;
 
 static NSHashTable<UIViewController *> *gOverlayControllers;
 static BOOL gEditModeActive = NO;
+static BOOL gCCAEditTransitionActive = NO;
+static NSUInteger gCCAEditTransitionGeneration = 0;
 static BOOL gCCAExpandedModuleOpen = NO;
 static BOOL gCCAExpandedModuleClosingActive = NO;
 static UIView *gCCAExpansionSourceSnapshot = nil;
@@ -254,6 +256,7 @@ static const void *kCCASliderOverscrollTargetKey = &kCCASliderOverscrollTargetKe
 static const void *kCCANowPlayingLayoutModeKey = &kCCANowPlayingLayoutModeKey;
 static const void *kCCAMediaRouteGlyphShrinkKey = &kCCAMediaRouteGlyphShrinkKey;
 static const void *kCCAPagerGestureKey = &kCCAPagerGestureKey;
+static const void *kCCAPagerModulePanDependencyKey = &kCCAPagerModulePanDependencyKey;
 static const void *kCCAEditDismissPanKey = &kCCAEditDismissPanKey;
 static const void *kCCAPageIndicatorPanKey = &kCCAPageIndicatorPanKey;
 static const void *kCCAPageIndicatorCountKey = &kCCAPageIndicatorCountKey;
@@ -5172,7 +5175,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (void)pageIndicatorPanned:(UIPanGestureRecognizer *)gesture {
     UIView *host = gesture.view;
     UIViewController *overlay = gOverlayControllers.allObjects.firstObject;
-    if (!gPagingEnabled || !overlay || !host || gCCAPageCount <= 1 || gCCAExpandedModuleOpen) return;
+    if (!gPagingEnabled || !overlay || !host || gCCAPageCount <= 1 ||
+        gCCAExpandedModuleOpen || gCCADragInProgress) return;
     CGPoint location = [gesture locationInView:host];
     CGFloat step = gCCAPagerScrubbingActive ? kCCAPageIndicatorScrubStep : kCCAPageIndicatorRestStep;
     CGFloat progress = CCAPageProgressForScrubY(location.y, step, gCCAPageCount);
@@ -5194,7 +5198,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 }
 
 - (void)trackControlCenterPresentationGesture:(UIPanGestureRecognizer *)gesture overlay:(UIViewController *)overlay controller:(id)controller {
-    if (!gPagingEnabled || !gesture || gCCAExpandedModuleOpen) return;
+    if (!gPagingEnabled || !gesture || gCCAExpandedModuleOpen || gCCADragInProgress) return;
     if (controller) gCCAPresentationController = controller;
     if (overlay) {
         // The pull gesture can begin before viewDidAppear/viewDidLayoutSubviews
@@ -5574,7 +5578,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (void)pagePanned:(UIPanGestureRecognizer *)gesture {
     UIViewController *overlay = nil;
     for (UIViewController *candidate in gOverlayControllers.allObjects) if (candidate.view == gesture.view) { overlay = candidate; break; }
-    if (!gPagingEnabled || !overlay || gCCAPageCount <= 1 || gCCAExpandedModuleOpen) return;
+    if (!gPagingEnabled || !overlay || gCCAPageCount <= 1 ||
+        gCCAExpandedModuleOpen || gCCADragInProgress) return;
     if (gesture.state == UIGestureRecognizerStateBegan) {
         gCCAPagerTransitionActive = YES;
         if (gEditModeActive) [self setEditControlsSuppressedForPaging:YES overlay:overlay animated:YES];
@@ -5752,6 +5757,14 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         objc_setAssociatedObject(pager, kCCAPagerGestureKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [overlay.view addGestureRecognizer:pager];
     }
+    for (UIGestureRecognizer *gesture in overlay.view.gestureRecognizers) {
+        if (![objc_getAssociatedObject(gesture, @selector(modulePanned:)) isEqual:@"overlayPan"]) continue;
+        if (objc_getAssociatedObject(pager, kCCAPagerModulePanDependencyKey) != gesture) {
+            [pager requireGestureRecognizerToFail:gesture];
+            objc_setAssociatedObject(pager, kCCAPagerModulePanDependencyKey, gesture, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        break;
+    }
     pager.enabled = gPagingEnabled;
     [self normalizePagedLayoutForOverlay:overlay];
     if (!gPagingEnabled) {
@@ -5867,11 +5880,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         return velocity.y < -80.0 && fabs(velocity.y) > fabs(velocity.x);
     }
     if ([objc_getAssociatedObject(gesture, kCCAPagerGestureKey) boolValue]) {
-        // A module drag no longer blocks the pager: it rejects touches on the
-        // dragged tile anyway (below), so only a *second* finger in blank space
-        // can reach here, and that finger should page the board underneath the
-        // held module — not fall through to SpringBoard's dismiss.
-        if (!gPagingEnabled || gCCAPageCount <= 1 || gCCAExpandedModuleOpen || gCCAResizeInProgress) return NO;
+        if (!gPagingEnabled || gCCAPageCount <= 1 || gCCAExpandedModuleOpen ||
+            gCCADragInProgress || gCCAResizeInProgress) return NO;
         CGPoint velocity = [(UIPanGestureRecognizer *)gesture velocityInView:gesture.view];
         CGPoint location = [gesture locationInView:gesture.view];
         if (location.y > CGRectGetHeight(gesture.view.bounds) - MAX(92.0, gesture.view.safeAreaInsets.bottom + 68.0)) return NO;
@@ -5891,9 +5901,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         return location.y > CGRectGetHeight(gesture.view.bounds) - MAX(92.0, gesture.view.safeAreaInsets.bottom + 68.0);
     }
     if ([objc_getAssociatedObject(gesture, kCCAPagerGestureKey) boolValue]) {
-        // Allow the pager during a drag so a second finger can page; the module
-        // hit-test below still rejects the finger holding the dragged tile.
-        if (!gPagingEnabled || gCCAPageCount <= 1 || gCCAExpandedModuleOpen || gCCAResizeInProgress) return NO;
+        if (!gPagingEnabled || gCCAPageCount <= 1 || gCCAExpandedModuleOpen ||
+            gCCADragInProgress || gCCAResizeInProgress) return NO;
         CGPoint location = [touch locationInView:gesture.view];
         if (location.y > CGRectGetHeight(gesture.view.bounds) - MAX(92.0, gesture.view.safeAreaInsets.bottom + 68.0)) return NO;
         UIView *candidate = touch.view;
@@ -5998,7 +6007,12 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGesture {
     if ([objc_getAssociatedObject(gesture, kCCAEditDismissPanKey) boolValue] || [objc_getAssociatedObject(otherGesture, kCCAEditDismissPanKey) boolValue]) return NO;
     if (gesture.view.tag == kCCAResizeButtonTag || otherGesture.view.tag == kCCAResizeButtonTag || gCCAResizeInProgress) return NO;
-    if ([objc_getAssociatedObject(gesture, kCCAPagerGestureKey) boolValue] || [objc_getAssociatedObject(otherGesture, kCCAPagerGestureKey) boolValue]) return YES;
+    BOOL gestureIsPager = [objc_getAssociatedObject(gesture, kCCAPagerGestureKey) boolValue];
+    BOOL otherIsPager = [objc_getAssociatedObject(otherGesture, kCCAPagerGestureKey) boolValue];
+    BOOL gestureIsModulePan = [objc_getAssociatedObject(gesture, @selector(modulePanned:)) isEqual:@"overlayPan"];
+    BOOL otherIsModulePan = [objc_getAssociatedObject(otherGesture, @selector(modulePanned:)) isEqual:@"overlayPan"];
+    if ((gestureIsPager && otherIsModulePan) || (otherIsPager && gestureIsModulePan) || gCCADragInProgress) return NO;
+    if (gestureIsPager || otherIsPager) return YES;
     return NO;
 }
 
@@ -8103,6 +8117,11 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     CGPoint startPoint = [objc_getAssociatedObject(gesture, kCCADragStartPointKey) CGPointValue];
     CGPoint translation = CGPointMake(currentPoint.x - startPoint.x, currentPoint.y - startPoint.y);
     if (gesture.state == UIGestureRecognizerStateBegan) {
+        if (gCCAPagerTransitionActive || gCCAPagerScrubbingActive || gCCAPresentationPageHandoffActive) {
+            gesture.enabled = NO;
+            gesture.enabled = YES;
+            return;
+        }
         CGPoint location = currentPoint;
         UIViewController *source = nil;
         CGFloat sourceDistance = CGFLOAT_MAX;
@@ -9397,6 +9416,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (void)setEditing:(BOOL)editing {
     if (!gEnabled) editing = NO;
     if (editing && gCCAExpandedModuleOpen) return;
+    NSUInteger editTransitionGeneration = ++gCCAEditTransitionGeneration;
+    gCCAEditTransitionActive = YES;
     gCCAEditChromeSuppressedForPaging = NO;
     gEditModeActive = editing;
     if (editing && !gCCAEditChromeDisplayLink) {
@@ -9409,7 +9430,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     for (UIViewController *overlay in gOverlayControllers.allObjects) {
         CCARestoreNativeScrollBaseline(overlay);
         [self normalizePagedLayoutForOverlay:overlay];
-        [self setNativeDismissTapGesturesEnabled:!editing forOverlay:overlay];
+        if (editing) [self setNativeDismissTapGesturesEnabled:NO forOverlay:overlay];
         for (UIViewController *module in CCACollectModuleControllers(overlay)) [self applyEditingToModule:module editing:editing];
         [self setEditPresentation:editing forOverlay:overlay animated:YES];
         [self updatePageIndicatorsForOverlay:overlay];
@@ -9419,10 +9440,21 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         // to re-show it. Manage its visibility explicitly on edit transitions.
         [self setQuickAccessButtonsHidden:(editing || gCCAExpandedModuleOpen || !gCCAControlCenterPresented) forOverlay:overlay animated:YES];
     }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.32 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (editTransitionGeneration != gCCAEditTransitionGeneration || gEditModeActive != editing) return;
+        gCCAEditTransitionActive = NO;
+        if (!editing) {
+            for (UIViewController *overlay in gOverlayControllers.allObjects) {
+                [self setNativeDismissTapGesturesEnabled:YES forOverlay:overlay];
+            }
+        }
+    });
 }
 
 - (void)dismissEditingImmediately {
     if (!gEditModeActive) return;
+    ++gCCAEditTransitionGeneration;
+    gCCAEditTransitionActive = NO;
     gEditModeActive = NO;
     gCCAEditChromeSuppressedForPaging = NO;
     [gCCAEditChromeDisplayLink invalidate];
@@ -11210,11 +11242,16 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
 %hook CCUIContentModuleContainerViewController
 
 - (BOOL)clickPresentationInteractionShouldBegin:(id)interaction {
+    if (gEnabled && (gEditModeActive || gCCAEditTransitionActive)) return NO;
     CCAApplyExpansionPageGeometrySync(gOverlayControllers.allObjects.firstObject);
     return %orig;
 }
 
 - (id)clickPresentationInteraction:(id)interaction previewForHighlightingAtLocation:(CGPoint)location {
+    if (gEnabled && (gEditModeActive || gCCAEditTransitionActive)) {
+        CCADiscardExpansionCompactTransitionAssets();
+        return nil;
+    }
     CCAApplyExpansionPageGeometrySync(gOverlayControllers.allObjects.firstObject);
     CCAResetGenericExpansionDismissal();
     UIView *sourceView = ((UIViewController *)(id)self).view;
@@ -11285,6 +11322,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
 }
 
 - (UIViewController *)presentedViewControllerForContentModuleDetailClickPresentationInteractionController:(id)interactionController {
+    if (gEnabled && (gEditModeActive || gCCAEditTransitionActive)) return nil;
     NSString *identifier = CCAModuleIdentifier((UIViewController *)(id)self);
     if (gEnabled && [identifier.lowercaseString containsString:@"ccaster.connectivity"] &&
         CCAConnectivityIdentifierHasExpandedMenu(identifier)) {
@@ -13286,7 +13324,7 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
 %hook CCUIModularControlCenterOverlayViewController
 
 - (void)moduleCollectionViewController:(id)collection willOpenExpandedModule:(id)module {
-    if (gEnabled && gEditModeActive) {
+    if (gEnabled && (gEditModeActive || gCCAEditTransitionActive)) {
         gCCAExpandedModuleOpen = NO;
         gCCAConnectivityExpansionActive = NO;
         gCCAExpandedModuleIdentifier = nil;

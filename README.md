@@ -1,6 +1,8 @@
+![CCAster](assets/banner.png)
+
 # CCAster
 
-CCAster is a staged iOS 18-inspired Control Center experience for rootless iOS 16.
+CCAster is an iOS 18-inspired, editable Control Center experience for rootless iOS 16.
 
 The project currently focuses on SpringBoard-side Control Center behavior:
 
@@ -25,7 +27,7 @@ The package is configured for iOS 16:
 - package id: `com.futur3sn0w.ccaster`
 - firmware: `>= 16.0, << 17.0`
 - injection target: SpringBoard
-- dependencies: ElleKit, PreferenceLoader, `ws.hbang.common`
+- dependencies: ElleKit and PreferenceLoader
 
 ## Project Layout
 

@@ -27,14 +27,12 @@ static CGFloat const kCCAEditingModuleOffset = -48.0;
 static NSUInteger const kCCAMinimumGridRows = 8;
 // CCUILayoutOptions is patched below so the real collection and every
 // CCAster-owned grid use the same compact geometry.
-static CGFloat const kCCAGridCellSize = 67.0;
-static CGFloat const kCCAGridGap = 12.0;
-static CGFloat const kCCAGridStep = kCCAGridCellSize + kCCAGridGap;
-static CGFloat const kCCAPageSpan = kCCAMinimumGridRows * kCCAGridStep;
-// The narrower grid exposed a small pre-existing leading bias. Eight points
-// centers its visible 4-column footprint on the iPhone X display while leaving
-// the pager in the trailing gutter.
-static CGFloat const kCCAGridHorizontalCenteringCompensation = 8.0;
+static CGFloat kCCAGridCellSize = 67.0;
+static CGFloat kCCAGridGap = 12.0;
+static CGFloat const kCCAGridCellScale = 67.0 / 69.0;
+static CGFloat const kCCAGridGapScale = 12.0 / 15.0;
+#define kCCAGridStep (kCCAGridCellSize + kCCAGridGap)
+#define kCCAPageSpan (kCCAMinimumGridRows * kCCAGridStep)
 static CGFloat const kCCAPageIndicatorRestStep = 39.0;
 static CGFloat const kCCAPageIndicatorScrubStep = 58.0;
 static CGFloat const kCCAPageIndicatorRestHostWidth = 42.0;
@@ -325,6 +323,17 @@ static BOOL CCAIsActiveDragModuleIdentifier(NSString *identifier) {
     return gCCADragInProgress && identifier.length && gCCAActiveDragModuleIdentifier.length && [identifier isEqualToString:gCCAActiveDragModuleIdentifier];
 }
 
+static CGFloat CCAGridVisibleWidth(void) {
+    return kCCAGridCellSize * 4.0 + kCCAGridGap * 3.0;
+}
+
+static CGFloat CCAGridHorizontalCenteringCompensationForFrame(CGRect frame, CCUILayoutRect layoutRect, CGFloat containerWidth) {
+    if (containerWidth < 1.0) containerWidth = CGRectGetWidth(UIScreen.mainScreen.bounds);
+    CGFloat nativeBase = CGRectGetMinX(frame) - (CGFloat)layoutRect.origin.x * kCCAGridStep;
+    CGFloat nativeFootprint = nativeBase * 2.0 + CCAGridVisibleWidth();
+    return MAX(0.0, containerWidth - nativeFootprint) * 0.5;
+}
+
 static NSUInteger CCAVisualPageSpacerRows(void) {
     CGFloat screenHeight = CGRectGetHeight(UIScreen.mainScreen.bounds);
     CGFloat extraHeight = screenHeight - kCCAPageSpan;
@@ -349,8 +358,17 @@ static void CCAApplyCompactGridSpacingToLayoutOptions(id layoutOptions) {
     Ivar spacingIvar = class_getInstanceVariable(object_getClass(layoutOptions), "_itemSpacing");
     if (!spacingIvar) spacingIvar = class_getInstanceVariable([layoutOptions class], "_itemSpacing");
     uint8_t *bytes = (uint8_t *)(__bridge void *)layoutOptions;
-    if (spacingIvar) *((CGFloat *)(bytes + ivar_getOffset(spacingIvar))) = kCCAGridGap;
     Ivar edgeIvar = class_getInstanceVariable([layoutOptions class], "_itemEdgeSize");
+    CGFloat nativeGap = spacingIvar ? *((CGFloat *)(bytes + ivar_getOffset(spacingIvar))) : 0.0;
+    CGFloat nativeCell = edgeIvar ? *((CGFloat *)(bytes + ivar_getOffset(edgeIvar))) : 0.0;
+    BOOL alreadyCompact = nativeCell > 0.0 && nativeGap > 0.0 &&
+        fabs(nativeCell - kCCAGridCellSize) < 0.5 &&
+        fabs(nativeGap - kCCAGridGap) < 0.5;
+    if (!alreadyCompact) {
+        if (nativeCell > 1.0) kCCAGridCellSize = round(nativeCell * kCCAGridCellScale);
+        if (nativeGap > 1.0) kCCAGridGap = round(nativeGap * kCCAGridGapScale);
+    }
+    if (spacingIvar) *((CGFloat *)(bytes + ivar_getOffset(spacingIvar))) = kCCAGridGap;
     if (edgeIvar) *((CGFloat *)(bytes + ivar_getOffset(edgeIvar))) = kCCAGridCellSize;
 }
 
@@ -3864,7 +3882,10 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         fallback.x = MIN(fallback.x, baseX);
         fallback.y = MIN(fallback.y, baseY);
     }
-    if (fallback.x == CGFLOAT_MAX || fallback.y == CGFLOAT_MAX) return CGPointMake(35.0, 125.0);
+    if (fallback.x == CGFLOAT_MAX || fallback.y == CGFLOAT_MAX) {
+        CGFloat width = overlay.view ? CGRectGetWidth(overlay.view.bounds) : CGRectGetWidth(UIScreen.mainScreen.bounds);
+        return CGPointMake((width - CCAGridVisibleWidth()) * 0.5, 125.0);
+    }
     return fallback;
 }
 
@@ -9859,7 +9880,11 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 
 - (CGRect)frameForLayoutRect:(CCUILayoutRect)layoutRect {
     CGRect frame = %orig;
-    if (gEnabled) frame.origin.x += kCCAGridHorizontalCenteringCompensation;
+    if (gEnabled) {
+        CGFloat containerWidth = CGRectGetWidth(((UIView *)(id)self).window.bounds);
+        if (containerWidth < 1.0) containerWidth = CGRectGetWidth(UIScreen.mainScreen.bounds);
+        frame.origin.x += CCAGridHorizontalCenteringCompensationForFrame(frame, layoutRect, containerWidth);
+    }
     return frame;
 }
 

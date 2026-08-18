@@ -4082,18 +4082,29 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         existingHost.userInteractionEnabled = gQuickAccessButtonsEnabled;
         return;
     }
-    // Keep this strictly inside the overlay. The system status-bar superview is
-    // owned above Control Center and survives dismissal, which leaks buttons
-    // onto the Home Screen. Header pocket is overlay-scoped and still carries
-    // the native top-chrome presentation transform.
-    UIView *animationHost = CCAFindSubviewWithClassName(controller.view, @"CCUIHeaderPocketView");
-    if (!animationHost) {
-        @try {
-            id candidate = [(id)controller valueForKey:@"overlayHeaderView"];
-            if ([candidate isKindOfClass:[UIView class]]) animationHost = candidate;
-        } @catch (__unused NSException *exception) {}
+    // Quick Access must stay inside the Control Center overlay, but the native
+    // header pocket is not a stable host on Home-button iPhones. On those
+    // devices its top geometry can start below the area where our controls are
+    // meant to live, causing the buttons to be laid out above the visible
+    // overlay (or behind the pocket) and effectively disappear.
+    //
+    // Use the native header pocket on edge-to-edge devices, where its
+    // presentation transform is reliable. On Home-button devices, anchor the
+    // host directly to the overlay's top edge and account for the safe-area
+    // inset explicitly.
+    UIView *animationHost = nil;
+    BOOL homeButtonLayout = controller.view.safeAreaInsets.top <= 24.0;
+    if (!homeButtonLayout) {
+        animationHost = CCAFindSubviewWithClassName(controller.view, @"CCUIHeaderPocketView");
+        if (!animationHost) {
+            @try {
+                id candidate = [(id)controller valueForKey:@"overlayHeaderView"];
+                if ([candidate isKindOfClass:[UIView class]]) animationHost = candidate;
+            } @catch (__unused NSException *exception) {}
+        }
     }
     if (!animationHost) animationHost = controller.view;
+
     UIView *host = [[CCAQuickAccessHostView alloc] initWithFrame:CGRectZero];
     host.tag = 181000;
     host.backgroundColor = UIColor.clearColor;
@@ -4101,15 +4112,29 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     host.translatesAutoresizingMaskIntoConstraints = NO;
     [animationHost addSubview:host];
     animationHost.clipsToBounds = NO;
-    CGRect hostFrameInOverlay = [animationHost convertRect:animationHost.bounds toView:controller.view];
-    CGFloat hostOriginY = MAX(CGRectGetMinY(animationHost.frame), CGRectGetMinY(hostFrameInOverlay));
-    CGFloat hostOriginX = MAX(CGRectGetMinX(animationHost.frame), CGRectGetMinX(hostFrameInOverlay));
-    [NSLayoutConstraint activateConstraints:@[
-        [host.topAnchor constraintEqualToAnchor:animationHost.topAnchor constant:-hostOriginY],
-        [host.leadingAnchor constraintEqualToAnchor:animationHost.leadingAnchor constant:-hostOriginX],
-        [host.widthAnchor constraintEqualToConstant:CGRectGetWidth(controller.view.bounds)],
-        [host.heightAnchor constraintEqualToConstant:76.0]
-    ]];
+
+    if (homeButtonLayout) {
+        // The Home-button layout has a real top safe-area inset (~20pt).
+        // Anchor the host to the overlay itself instead of the header pocket.
+        // The controls then occupy the visible chrome rather than y < 0.
+        [NSLayoutConstraint activateConstraints:@[
+            [host.topAnchor constraintEqualToAnchor:controller.view.topAnchor
+                                           constant:controller.view.safeAreaInsets.top],
+            [host.leadingAnchor constraintEqualToAnchor:controller.view.leadingAnchor],
+            [host.widthAnchor constraintEqualToAnchor:controller.view.widthAnchor],
+            [host.heightAnchor constraintEqualToConstant:76.0]
+        ]];
+    } else {
+        CGRect hostFrameInOverlay = [animationHost convertRect:animationHost.bounds toView:controller.view];
+        CGFloat hostOriginY = MAX(CGRectGetMinY(animationHost.frame), CGRectGetMinY(hostFrameInOverlay));
+        CGFloat hostOriginX = MAX(CGRectGetMinX(animationHost.frame), CGRectGetMinX(hostFrameInOverlay));
+        [NSLayoutConstraint activateConstraints:@[
+            [host.topAnchor constraintEqualToAnchor:animationHost.topAnchor constant:-hostOriginY],
+            [host.leadingAnchor constraintEqualToAnchor:animationHost.leadingAnchor constant:-hostOriginX],
+            [host.widthAnchor constraintEqualToConstant:CGRectGetWidth(controller.view.bounds)],
+            [host.heightAnchor constraintEqualToConstant:76.0]
+        ]];
+    }
 
     UIView *materialRoot = controller.view;
     for (UIViewController *module in CCACollectModuleControllers(controller)) {

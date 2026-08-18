@@ -23,30 +23,54 @@ jobs:
             make \
             git \
             curl \
-            perl 
+            perl
 
       - name: Install Theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
 
-      - name: Install iOS SDKs
+      - name: Install iOS SDK
         run: |
-          git clone https://github.com/theos/sdks.git /tmp/sdks
+          git clone --depth 1 https://github.com/theos/sdks.git /tmp/sdks
 
-          mkdir -p $HOME/theos/sdks
+          mkdir -p "$HOME/theos/sdks"
 
           cp -R /tmp/sdks/iPhoneOS16.5.sdk \
-            $HOME/theos/sdks/
+            "$HOME/theos/sdks/"
+
+      - name: Verify Theos
+        run: |
+          export THEOS="$HOME/theos"
+
+          echo "THEOS=$THEOS"
+
+          test -f "$THEOS/makefiles/common.mk"
+          test -f "$THEOS/makefiles/aggregate.mk"
+
+          echo "Theos installation OK"
+          echo "SDKs:"
+          ls -la "$THEOS/sdks"
 
       - name: Build GoldenCC
-        env:
-          THEOS: ${{ github.workspace }}/../theos
         run: |
+          export THEOS="$HOME/theos"
+
+          echo "Building GoldenCC..."
+          echo "THEOS=$THEOS"
+
           make clean
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
 
+      - name: Show packages
+        if: success()
+        run: |
+          echo "Generated packages:"
+          ls -lah packages/
+
       - name: Upload GoldenCC .deb
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: GoldenCC
           path: packages/*.deb
+          if-no-files-found: error

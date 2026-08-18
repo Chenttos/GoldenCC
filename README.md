@@ -1,4 +1,4 @@
-![CCAster](assets/banner.png)
+![GoldenCC](assets/banner.png)
 
 # GoldenCC
 

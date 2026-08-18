@@ -23,11 +23,25 @@ jobs:
             make \
             git \
             curl \
-            perl
+            perl \
+            xz-utils \
+            bzip2 \
+            unzip
 
       - name: Install Theos
         run: |
           git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+
+      - name: Install iOS Toolchain
+        run: |
+          mkdir -p "$HOME/theos/toolchain/linux/iphone"
+
+          curl -L \
+            "https://github.com/theos/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma" \
+            -o /tmp/toolchain.tar.lzma
+
+          tar --lzma -xf /tmp/toolchain.tar.lzma \
+            -C "$HOME/theos/toolchain/linux/iphone"
 
       - name: Install iOS SDK
         run: |
@@ -38,7 +52,7 @@ jobs:
           cp -R /tmp/sdks/iPhoneOS16.5.sdk \
             "$HOME/theos/sdks/"
 
-      - name: Verify Theos
+      - name: Verify Theos toolchain
         run: |
           export THEOS="$HOME/theos"
 
@@ -47,19 +61,27 @@ jobs:
           test -f "$THEOS/makefiles/common.mk"
           test -f "$THEOS/makefiles/aggregate.mk"
 
-          echo "Theos installation OK"
-          echo "SDKs:"
-          ls -la "$THEOS/sdks"
+          echo "Checking iOS compiler..."
+
+          test -x "$THEOS/toolchain/linux/iphone/bin/clang"
+          test -x "$THEOS/toolchain/linux/iphone/bin/clang++"
+
+          "$THEOS/toolchain/linux/iphone/bin/clang" --version
+          "$THEOS/toolchain/linux/iphone/bin/clang++" --version
+
+          echo "Theos toolchain OK"
 
       - name: Build GoldenCC
         run: |
           export THEOS="$HOME/theos"
 
           echo "Building GoldenCC..."
-          echo "THEOS=$THEOS"
 
           make clean
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+
+          make package \
+            FINALPACKAGE=1 \
+            THEOS_PACKAGE_SCHEME=rootless
 
       - name: Show packages
         if: success()

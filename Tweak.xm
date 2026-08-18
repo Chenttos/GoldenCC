@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 
-int __isOSVersionAtLeast(int major, int minor, int patch)
+extern "C" int __isOSVersionAtLeast(int major, int minor, int patch)
 {
     NSOperatingSystemVersion version;
 

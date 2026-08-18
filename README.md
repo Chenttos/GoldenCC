@@ -1,6 +1,8 @@
 ![CCAster](assets/banner.png)
 
-# CCAster
+# GoldenCC
+
+We are a fork from CCAster. We are currently focusing on fixing all bugs and providing user smoothness. All credits go to the official CCAster tweak.
 
 CCAster is an iOS 18-inspired, editable Control Center experience for rootless iOS 16.
 

@@ -23,8 +23,7 @@ jobs:
             make \
             git \
             curl \
-            perl \
-            ldid
+            perl 
 
       - name: Install Theos
         run: |

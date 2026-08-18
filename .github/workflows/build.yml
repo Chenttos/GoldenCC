@@ -19,40 +19,73 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang \
-            make \
-            git \
+            bash \
             curl \
+            git \
+            make \
             perl \
+            zip \
+            rsync \
+            fakeroot \
+            libxml2 \
             xz-utils \
-            bzip2 \
-            unzip
+            bzip2
 
       - name: Install Theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          export THEOS="$HOME/theos"
+
+          git clone --recursive \
+            https://github.com/theos/theos.git \
+            "$THEOS"
 
       - name: Install iOS Toolchain
         run: |
-          mkdir -p "$HOME/theos/toolchain/linux/iphone"
+          export THEOS="$HOME/theos"
+
+          mkdir -p "$THEOS/toolchain/linux"
 
           curl -L \
-            "https://github.com/theos/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma" \
-            -o /tmp/toolchain.tar.lzma
+            https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz \
+            -o /tmp/iOSToolchain.tar.xz
 
-          tar --lzma -xf /tmp/toolchain.tar.lzma \
-            -C "$HOME/theos/toolchain/linux/iphone"
+          file /tmp/iOSToolchain.tar.xz
+
+          tar -xJf /tmp/iOSToolchain.tar.xz \
+            -C "$THEOS/toolchain/linux"
+
+          echo "Toolchain installed."
+
+          find "$THEOS/toolchain/linux" \
+            -maxdepth 4 \
+            -type f \
+            -name clang \
+            -o -name clang++
 
       - name: Install iOS SDK
         run: |
-          git clone --depth 1 https://github.com/theos/sdks.git /tmp/sdks
+          export THEOS="$HOME/theos"
 
-          mkdir -p "$HOME/theos/sdks"
+          git clone --depth 1 \
+            https://github.com/theos/sdks.git \
+            /tmp/sdks
 
-          cp -R /tmp/sdks/iPhoneOS16.5.sdk \
-            "$HOME/theos/sdks/"
+          mkdir -p "$THEOS/sdks"
 
-      - name: Verify Theos toolchain
+          if [ -d "/tmp/sdks/iPhoneOS16.5.sdk" ]; then
+            cp -R /tmp/sdks/iPhoneOS16.5.sdk \
+              "$THEOS/sdks/"
+          else
+            echo "iPhoneOS16.5.sdk not found."
+            echo "Available SDKs:"
+            find /tmp/sdks -maxdepth 1 -type d -name "iPhoneOS*.sdk"
+            exit 1
+          fi
+
+          echo "Installed SDKs:"
+          ls -lah "$THEOS/sdks"
+
+      - name: Verify Theos
         run: |
           export THEOS="$HOME/theos"
 
@@ -61,21 +94,26 @@ jobs:
           test -f "$THEOS/makefiles/common.mk"
           test -f "$THEOS/makefiles/aggregate.mk"
 
-          echo "Checking iOS compiler..."
+          echo "Theos installation OK."
 
-          test -x "$THEOS/toolchain/linux/iphone/bin/clang"
-          test -x "$THEOS/toolchain/linux/iphone/bin/clang++"
+          echo "Toolchain:"
+          find "$THEOS/toolchain/linux" \
+            -type f \
+            \( -name clang -o -name clang++ \) \
+            -print
 
-          "$THEOS/toolchain/linux/iphone/bin/clang" --version
-          "$THEOS/toolchain/linux/iphone/bin/clang++" --version
-
-          echo "Theos toolchain OK"
+          echo "SDKs:"
+          ls -lah "$THEOS/sdks"
 
       - name: Build GoldenCC
         run: |
           export THEOS="$HOME/theos"
 
-          echo "Building GoldenCC..."
+          echo "================================"
+          echo "Building GoldenCC"
+          echo "================================"
+
+          echo "THEOS=$THEOS"
 
           make clean
 
@@ -86,7 +124,10 @@ jobs:
       - name: Show packages
         if: success()
         run: |
-          echo "Generated packages:"
+          echo "================================"
+          echo "Generated packages"
+          echo "================================"
+
           ls -lah packages/
 
       - name: Upload GoldenCC .deb

@@ -67,6 +67,10 @@ static CGFloat const kCCAEditScrubModuleWrapperCenteringY = 118.0;
 static NSUInteger const kCCAMaxPages = 9;
 
 static NSHashTable<UIViewController *> *gOverlayControllers;
+
+// Forward declaration: this helper is used by edit/prefs hooks before its
+// implementation near the end of the file.
+static void CCAResyncPersistentDuplicatesForAllOverlays(void);
 static BOOL gEditModeActive = NO;
 static BOOL gCCAEditTransitionActive = NO;
 static NSUInteger gCCAEditTransitionGeneration = 0;

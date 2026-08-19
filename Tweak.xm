@@ -4160,7 +4160,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (gAddButtonEnabled) {
         UIButton *add = [self cornerButtonWithSymbol:@"plus" action:@selector(addTapped:) tag:181001 materialRoot:materialRoot];
         [host addSubview:add];
-        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
     }
     if (gPowerButtonEnabled) {
         UIButton *power = [self cornerButtonWithSymbol:@"power" action:@selector(ignoreTap:) tag:181002 materialRoot:materialRoot];
@@ -4169,7 +4169,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         hold.minimumPressDuration = 0.75;
         [power addGestureRecognizer:hold];
         [host addSubview:power];
-        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
     }
     // The provider-driven collection rebuild replaces the header pocket, so
     // this host can be re-created mid-session. When Control Center is already
@@ -10581,7 +10581,7 @@ typedef struct {
 static CCAConnectivityCompactMetrics CCAConnectivityCompactMetricsForBounds(CGRect bounds) {
     CGFloat side = MIN(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
     CGFloat inset = MAX(6.0, round(side * 0.103));
-    CGFloat gap = MAX(4.0, round(side * 0.055));
+    CGFloat gap = MAX(6.0, round(side * 0.070));
     CGFloat cell = floor((side - inset * 2.0 - gap) * 0.5);
     CGFloat originX = round((CGRectGetWidth(bounds) - (cell * 2.0 + gap)) * 0.5);
     CGFloat originY = round((CGRectGetHeight(bounds) - (cell * 2.0 + gap)) * 0.5);
@@ -10930,7 +10930,7 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
 
     CGFloat naturalMiniCell = floor(compactMetrics.cell * 0.444);
     CGFloat naturalMiniGap = compactMetrics.cell - naturalMiniCell * 2.0;
-    CGFloat requestedMiniGap = MAX(2.0, naturalMiniGap - 5.0);
+    CGFloat requestedMiniGap = MAX(2.0, naturalMiniGap - 4.0);
     CGFloat miniCell = floor((compactMetrics.cell - requestedMiniGap) * 0.5);
     CGFloat miniGap = compactMetrics.cell - miniCell * 2.0;
     if (!miniCluster) {

@@ -1,11 +1,11 @@
 Package: com.meowly.goldencc
 Icon: https://github.com/Chenttos/GoldenCC/blob/main/assets/icon.png
-SileoDepiction: https://futur3sn0w.github.io/repo/depictions/com.futur3sn0w.ccaster.json
-Name: CCAster
-Version: 0.2.2
+SileoDepiction: https://raw.githubusercontent.com/Chenttos/GoldenCC/refs/heads/main/assets/depiction.json
+Name: GoldenCC
+Version: 0.0.1
 Architecture: iphoneos-arm64
 Description: An iOS 18-inspired, editable Control Center experience for iOS 15, 16 and 17.
-Maintainer: futur3sn0w
-Author: futur3sn0w
+Maintainer: Me0wly
+Author: Me0wly
 Section: Tweaks
 Depends: firmware (>= 15.0), firmware (<< 18.0), ellekit, preferenceloader

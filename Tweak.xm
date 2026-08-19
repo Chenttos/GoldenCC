@@ -3904,23 +3904,87 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 }
 
 - (void)syncOwnedDuplicateModulesForOverlay:(UIViewController *)overlay {
-    if (!overlay) return;
-
-    // GoldenCC no longer creates or persists duplicate Control Center modules.
-    // Remove any duplicates left over from an older build/session so they
-    // cannot reappear after a provider rebuild.
-    NSArray *children = [overlay.childViewControllers copy];
-    for (UIViewController *child in children) {
+    if (!overlay.view) return;
+    UIView *host = [self ownedDuplicateHostForOverlay:overlay];
+    NSMutableDictionary<NSString *, CCAOwnedDuplicateModuleViewController *> *existing = [NSMutableDictionary dictionary];
+    for (UIViewController *child in overlay.childViewControllers) {
         if (![child isKindOfClass:[CCAOwnedDuplicateModuleViewController class]]) continue;
-        [child willMoveToParentViewController:nil];
-        [child.view removeFromSuperview];
-        [child removeFromParentViewController];
+        CCAOwnedDuplicateModuleViewController *duplicate = (CCAOwnedDuplicateModuleViewController *)child;
+        if (duplicate.moduleIdentifier.length) existing[duplicate.moduleIdentifier] = duplicate;
     }
-
-    UIView *host = [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
-    if (host) [host removeFromSuperview];
-
-    [gCCADuplicateFamilies removeAllObjects];
+    for (NSString *identifier in existing.allKeys) {
+        if (gCCADuplicateFamilies[identifier]) continue;
+        UIViewController *stale = existing[identifier];
+        UIView *container = objc_getAssociatedObject(stale, kCCAOwnedDuplicateContainerKey);
+        [stale willMoveToParentViewController:nil];
+        [container removeFromSuperview];
+        if (!container) [stale.view removeFromSuperview];
+        [stale removeFromParentViewController];
+        [existing removeObjectForKey:identifier];
+    }
+    for (NSString *identifier in gCCADuplicateFamilies) {
+        NSString *baseIdentifier = gCCADuplicateFamilies[identifier];
+        if (!identifier.length || !baseIdentifier.length) continue;
+        CCAOwnedDuplicateModuleViewController *duplicate = existing[identifier];
+        BOOL createdDuplicate = NO;
+        if (!duplicate) {
+            duplicate = [[CCAOwnedDuplicateModuleViewController alloc] initWithModuleIdentifier:identifier baseIdentifier:baseIdentifier];
+            [overlay addChildViewController:duplicate];
+            UIView *container = [[UIView alloc] initWithFrame:CGRectZero];
+            container.backgroundColor = UIColor.clearColor;
+            container.opaque = NO;
+            container.clipsToBounds = NO;
+            UIView *presentation = [[UIView alloc] initWithFrame:CGRectZero];
+            presentation.backgroundColor = UIColor.clearColor;
+            presentation.opaque = NO;
+            presentation.clipsToBounds = NO;
+            [container addSubview:presentation];
+            [presentation addSubview:duplicate.view];
+            [host addSubview:container];
+            objc_setAssociatedObject(duplicate, kCCAOwnedDuplicateContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(duplicate, kCCAOwnedDuplicatePresentationKey, presentation, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [duplicate didMoveToParentViewController:overlay];
+            existing[identifier] = duplicate;
+            createdDuplicate = YES;
+        } else {
+            UIView *container = objc_getAssociatedObject(duplicate, kCCAOwnedDuplicateContainerKey);
+            UIView *presentation = objc_getAssociatedObject(duplicate, kCCAOwnedDuplicatePresentationKey);
+            if (!container || !presentation) {
+                [duplicate.view removeFromSuperview];
+                container = [[UIView alloc] initWithFrame:CGRectZero];
+                container.backgroundColor = UIColor.clearColor;
+                container.opaque = NO;
+                container.clipsToBounds = NO;
+                presentation = [[UIView alloc] initWithFrame:CGRectZero];
+                presentation.backgroundColor = UIColor.clearColor;
+                presentation.opaque = NO;
+                presentation.clipsToBounds = NO;
+                [container addSubview:presentation];
+                [presentation addSubview:duplicate.view];
+                objc_setAssociatedObject(duplicate, kCCAOwnedDuplicateContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(duplicate, kCCAOwnedDuplicatePresentationKey, presentation, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            if (container.superview != host) {
+                [container removeFromSuperview];
+                [host addSubview:container];
+            }
+        }
+        NSValue *baseSize = gCCABaseLayoutSizes[baseIdentifier] ?: gCCAProviderSizes[baseIdentifier];
+        CCUILayoutSize size = {1, 1};
+        if (baseSize) [baseSize getValue:&size];
+        if (!size.width) size.width = 1;
+        if (!size.height) size.height = 1;
+        gCCABaseLayoutSizes[identifier] = [NSValue value:&size withObjCType:@encode(CCUILayoutSize)];
+        CCUILayoutRect rect = {(CCUILayoutPoint){0, 0}, size};
+        NSValue *nativeValue = gCCANativeLayoutRects[identifier];
+        if (nativeValue) [nativeValue getValue:&rect];
+        rect.size = size;
+        gCCANativeLayoutRects[identifier] = [NSValue value:&rect withObjCType:@encode(CCUILayoutRect)];
+        if (createdDuplicate || ![duplicate.view viewWithTag:kCCAResizePresentationTag]) {
+            [self applyRefinedLookToModule:duplicate];
+        }
+    }
+    [self layoutOwnedDuplicateModulesForOverlay:overlay];
 }
 
 - (void)layoutOwnedDuplicateModulesForOverlay:(UIViewController *)overlay {
@@ -4096,7 +4160,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (gAddButtonEnabled) {
         UIButton *add = [self cornerButtonWithSymbol:@"plus" action:@selector(addTapped:) tag:181001 materialRoot:materialRoot];
         [host addSubview:add];
-        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
     }
     if (gPowerButtonEnabled) {
         UIButton *power = [self cornerButtonWithSymbol:@"power" action:@selector(ignoreTap:) tag:181002 materialRoot:materialRoot];
@@ -4105,7 +4169,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         hold.minimumPressDuration = 0.75;
         [power addGestureRecognizer:hold];
         [host addSubview:power];
-        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
     }
     // The provider-driven collection rebuild replaces the header pocket, so
     // this host can be re-created mid-session. When Control Center is already
@@ -5143,11 +5207,6 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         }
         gCCAPagerScrubbingActive = NO;
         gCCAPagerTransitionActive = NO;
-
-        if (gCCAControlCenterPresented && !gCCAExpandedModuleOpen && !gEditModeActive &&
-            gQuickAccessButtonsEnabled) {
-            [self setQuickAccessButtonsHidden:NO forOverlay:overlay animated:NO];
-        }
         objc_setAssociatedObject(collection.view, kCCAScrubCollectionBoundsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(collection.view, kCCAScrubCollectionPositionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         CCAReassertNativeScrollClampForOverlay(overlay);
@@ -5160,15 +5219,6 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         [self updatePagedModuleVisibilityForOverlay:overlay showAdjacent:NO];
         [self updatePageIndicatorsForOverlay:overlay];
         [self updateTopFadeForOverlay:overlay presentationAlpha:0.0];
-
-        // Paging temporarily hides header chrome. Restore Quick Access after
-        // the page settles so the + and power buttons remain visible on every
-        // page, not only on page 0.
-        if (gCCAControlCenterPresented && !gCCAExpandedModuleOpen && !gEditModeActive &&
-            gQuickAccessButtonsEnabled) {
-            [self setQuickAccessButtonsHidden:NO forOverlay:overlay animated:NO];
-        }
-
         if (gEditModeActive) {
             [UIView performWithoutAnimation:^{
                 restoreWrapperBaseline(YES);
@@ -10531,7 +10581,7 @@ typedef struct {
 static CCAConnectivityCompactMetrics CCAConnectivityCompactMetricsForBounds(CGRect bounds) {
     CGFloat side = MIN(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
     CGFloat inset = MAX(6.0, round(side * 0.103));
-    CGFloat gap = MAX(6.0, round(side * 0.070));
+    CGFloat gap = MAX(4.0, round(side * 0.055));
     CGFloat cell = floor((side - inset * 2.0 - gap) * 0.5);
     CGFloat originX = round((CGRectGetWidth(bounds) - (cell * 2.0 + gap)) * 0.5);
     CGFloat originY = round((CGRectGetHeight(bounds) - (cell * 2.0 + gap)) * 0.5);
@@ -11918,16 +11968,19 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
             gCCAPagerScrubbingActive = NO;
             BOOL needsPageReset = gCCACurrentPage != 0 ||
                 fabs(gCCAPagerInteractiveTranslation) > 0.01;
-            // Every new Control Center presentation starts on page 1.
-            // Reset the model immediately while the overlay is dismissed so
-            // the next pull cannot inherit the previous page.
-            gCCACurrentPage = 0;
-            gCCAPagerInteractiveProgress = 0.0;
-            gCCAPagerInteractiveStartPage = 0;
-            gCCAPagerInteractiveTranslation = 0.0;
-            [[CCAsterCoordinator shared] setCurrentPage:0
-                                             forOverlay:overlay
-                                               animated:NO];
+            if (needsPageReset) {
+                __weak UIViewController *weakOverlay = overlay;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    if (gCCAControlCenterPresentationState != 0) return;
+                    UIViewController *settledOverlay = weakOverlay;
+                    if (settledOverlay) {
+                        [[CCAsterCoordinator shared] setCurrentPage:0
+                                                         forOverlay:settledOverlay
+                                                           animated:NO];
+                    }
+                });
+            }
         }
         UIView *hitBridge = [overlay.view viewWithTag:kCCAExtendedHitBridgeTag];
         if (state != 0 && hitBridge) [overlay.view bringSubviewToFront:hitBridge];
@@ -13616,12 +13669,6 @@ static void CCAPrefsChanged(__unused CFNotificationCenterRef center, __unused vo
         CFPropertyListRef savedDuplicates = CFPreferencesCopyAppValue(CFSTR("COSMICDuplicateFamilies"), kCCAPrefsDomain);
         gCCADuplicateFamilies = [(__bridge NSDictionary *)savedDuplicates mutableCopy] ?: [NSMutableDictionary dictionary];
         if (savedDuplicates) CFRelease(savedDuplicates);
-        // GoldenCC no longer supports duplicate modules. Remove the legacy
-        // persisted duplicate-family data so old CCAster/GoldenCC builds
-        // cannot resurrect duplicates.
-        gCCADuplicateFamilies = [NSMutableDictionary dictionary];
-        CFPreferencesSetAppValue(CFSTR("COSMICDuplicateFamilies"), NULL, kCCAPrefsDomain);
-        CFPreferencesAppSynchronize(kCCAPrefsDomain);
         // Connectivity is fixed at Apple's native 2x2 size. Remove builds'
         // stale 4x2 override without disturbing the user's chosen grid origin.
         if (gCCACustomSizes[@"com.apple.control-center.ConnectivityModule"]) {

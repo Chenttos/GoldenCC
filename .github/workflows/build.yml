@@ -12,12 +12,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------
+      # CHECKOUT
+      # --------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --------------------------------------------------
+      # INSTALL DEPENDENCIES
+      # --------------------------------------------------
       - name: Install dependencies
         run: |
-          sudo apt-get update
+          set -e
+
+          echo "================================"
+          echo "Preparing Ubuntu repositories"
+          echo "================================"
+
+          # Troca o mirror Azure por archive.ubuntu.com
+          # para evitar travamentos no apt do GitHub Runner.
+          sudo sed -i \
+            's|azure.archive.ubuntu.com/ubuntu|archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/sources.list.d/ubuntu.sources
+
+          echo ""
+          echo "APT sources:"
+          cat /etc/apt/sources.list.d/ubuntu.sources || true
+
+          echo ""
+          echo "================================"
+          echo "Updating APT"
+          echo "================================"
+
+          sudo apt-get \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            update
+
+          echo ""
+          echo "================================"
+          echo "Installing dependencies"
+          echo "================================"
 
           sudo apt-get install -y \
             bash \
@@ -32,17 +69,34 @@ jobs:
             rsync \
             libtinfo6
 
+          echo ""
+          echo "Dependencies installed successfully."
+
+      # --------------------------------------------------
+      # INSTALL THEOS
+      # --------------------------------------------------
       - name: Install Theos
         env:
           THEOS: /home/runner/theos
           CI: "1"
         run: |
-          echo "Installing Theos..."
+          set -e
+
+          echo "================================"
+          echo "Installing Theos"
+          echo "================================"
+
+          echo "THEOS=$THEOS"
 
           bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
 
+      # --------------------------------------------------
+      # VERIFY THEOS
+      # --------------------------------------------------
       - name: Verify Theos
         run: |
+          set -e
+
           export THEOS="$HOME/theos"
 
           echo "================================"
@@ -61,6 +115,7 @@ jobs:
           test -x "$THEOS/toolchain/linux/iphone/bin/clang"
           test -x "$THEOS/toolchain/linux/iphone/bin/clang++"
 
+          echo ""
           echo "clang:"
           "$THEOS/toolchain/linux/iphone/bin/clang" --version
 
@@ -77,8 +132,13 @@ jobs:
           echo "Theos + toolchain OK"
           echo "================================"
 
+      # --------------------------------------------------
+      # BUILD GOLDENCC
+      # --------------------------------------------------
       - name: Build GoldenCC
         run: |
+          set -e
+
           export THEOS="$HOME/theos"
 
           echo "================================"
@@ -87,12 +147,24 @@ jobs:
 
           echo "THEOS=$THEOS"
 
+          echo ""
+          echo "Cleaning previous build..."
           make clean
 
+          echo ""
+          echo "Compiling..."
           make package \
             FINALPACKAGE=1 \
             THEOS_PACKAGE_SCHEME=rootless
 
+          echo ""
+          echo "================================"
+          echo "Build completed successfully"
+          echo "================================"
+
+      # --------------------------------------------------
+      # SHOW PACKAGES
+      # --------------------------------------------------
       - name: Show packages
         if: success()
         run: |
@@ -102,6 +174,9 @@ jobs:
 
           ls -lah packages/
 
+      # --------------------------------------------------
+      # UPLOAD DEB
+      # --------------------------------------------------
       - name: Upload GoldenCC .deb
         if: success()
         uses: actions/upload-artifact@v4

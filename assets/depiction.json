@@ -1,132 +1,173 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
-  "headerImage": "https://futur3sn0w.github.io/repo/banners/com.futur3sn0w.ccaster.png",
-  "tintColor": "#00C7BE",
+  "headerImage": {
+    "url": "https://raw.githubusercontent.com/Chenttos/GoldenCC/main/assets/banner.png",
+    "height": 180
+  },
+  "tintColor": "#FFD60A",
+
   "tabs": [
     {
-      "tabname": "Details",
       "class": "DepictionStackView",
+      "tabname": "DESCRIPTION",
+
       "views": [
-                {
-                    "class": "DepictionMarkdownView",
-                    "markdown": "A modern, editable Control Center experience for iOS 16.\n\nArrange and resize controls on an 8x4 grid, add controls from CCAster's custom sheet, move between multiple pages, and reach editing and power actions from the Control Center header.",
-                    "useSpacing": true
-                },
-        {
-          "class": "DepictionSeparatorView"
-        },
         {
           "class": "DepictionHeaderView",
-          "title": "Package Info"
+          "title": "GoldenCC"
         },
+
         {
-          "class": "DepictionTableTextView",
-          "title": "Author",
-          "text": "Futur3Sn0w"
+          "class": "DepictionMarkdownView",
+          "markdown": "## GoldenCC\n\nA modern Control Center customization tweak for jailbroken iOS.\n\nGoldenCC is a remake of CCAster focused on fixing common bugs, improving stability, and adding new customization features."
         },
-        {
-                    "class": "DepictionTableTextView",
-                    "title": "Version",
-                    "text": "0.2.2"
-        },
-        {
-          "class": "DepictionTableTextView",
-          "title": "Requires",
-          "text": "iOS 16"
-        },
-        {
-          "class": "DepictionTableTextView",
-          "title": "Section",
-          "text": "Tweaks"
-        },
+
         {
           "class": "DepictionSeparatorView"
         },
+
+        {
+          "class": "DepictionHeaderView",
+          "title": "Features"
+        },
+
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "• Custom Control Center layout\n\n• Editable module placement\n\n• Module resizing\n\n• Quick Access customization\n\n• Custom Control Center controls\n\n• Multiple module instances\n\n• Persistent layout configuration\n\n• Control Center layout reset\n\n• Improved iOS 16 compatibility"
+        },
+
+        {
+          "class": "DepictionSeparatorView"
+        },
+
+        {
+          "class": "DepictionHeaderView",
+          "title": "Compatibility"
+        },
+
+        {
+          "class": "DepictionTableTextView",
+          "title": "iOS",
+          "text": "iOS 16.x"
+        },
+
+        {
+          "class": "DepictionTableTextView",
+          "title": "Architecture",
+          "text": "Rootless"
+        },
+
+        {
+          "class": "DepictionTableTextView",
+          "title": "Package ID",
+          "text": "com.meowly.goldencc"
+        },
+
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Chenttos"
+        },
+
+        {
+          "class": "DepictionSeparatorView"
+        },
+
+        {
+          "class": "DepictionHeaderView",
+          "title": "Requirements"
+        },
+
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "• Jailbroken iOS device\n\n• ElleKit\n\n• PreferenceLoader\n\n• Rootless jailbreak environment"
+        },
+
+        {
+          "class": "DepictionSeparatorView"
+        },
+
+        {
+          "class": "DepictionHeaderView",
+          "title": "Important"
+        },
+
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "GoldenCC modifies the SpringBoard Control Center experience. Some Control Center modules use private Apple APIs and may behave differently depending on the iOS version."
+        },
+
+        {
+          "class": "DepictionSeparatorView"
+        },
+
         {
           "class": "DepictionTableButtonView",
-          "title": "More by Futur3Sn0w",
-          "action": "https://futur3sn0w.github.io/repo",
+          "title": "GitHub",
+          "action": "https://github.com/Chenttos/GoldenCC",
           "openExternal": true
         }
       ]
     },
+
     {
-      "tabname": "Changelog",
-            "class": "DepictionStackView",
-            "views": [
-                {
-                    "class": "DepictionSubheaderView",
-                    "title": "Version 0.2.2",
-                    "useBoldText": true,
-                    "useBottomMargin": false
-                },
-                {
-                    "class": "DepictionMarkdownView",
-                    "markdown": "• Added some layout fixes for larger device sizes",
-                    "useSpacing": false
-                },
-                {
-                    "class": "DepictionMarkdownView",
-                    "markdown": "• Home-button device layout improvements are planned for a future update",
-                    "useSpacing": false
-                },
-                {
-                    "class": "DepictionSeparatorView"
-                },
-                {
-                    "class": "DepictionSubheaderView",
-                    "title": "Version 0.2.1",
-                    "useBoldText": true,
-                    "useBottomMargin": false
-                },
-                {
-                    "class": "DepictionMarkdownView",
-                    "markdown": "• Fixed 3D-touch modules expanding while in edit mode",
-                    "useSpacing": false
-                },
-                {
-                    "class": "DepictionMarkdownView",
-                    "markdown": "• Fixed modules trying to fight dragging to move while in edit mode",
-                    "useSpacing": false
-                },
-                {
-                    "class": "DepictionSeparatorView"
-                },
-                {
-                    "class": "DepictionSubheaderView",
-                    "title": "Version 0.0.2-1 - Beta 1 Hotfix",
-          "useBoldText": true,
-          "useBottomMargin": false
-        },
+      "class": "DepictionStackView",
+      "tabname": "SCREENSHOTS",
+
+      "views": [
         {
-                    "class": "DepictionMarkdownView",
-          "markdown": "• Added arm64e support for newer devices",
-          "useSpacing": false
+          "class": "DepictionMarkdownView",
+          "markdown": "## GoldenCC"
         },
+
+        {
+          "class": "DepictionImageView",
+          "URL": "https://raw.githubusercontent.com/Chenttos/GoldenCC/main/assets/banner.png",
+          "width": 320,
+          "height": 180,
+          "cornerRadius": 14,
+          "alignment": 1
+        },
+
         {
           "class": "DepictionSeparatorView"
         },
+
         {
-          "class": "DepictionSubheaderView",
-          "title": "Version 0.0.2 - Beta 1",
-          "useBoldText": true,
-          "useBottomMargin": false
+          "class": "DepictionMarkdownView",
+          "markdown": "More screenshots coming soon."
+        }
+      ]
+    },
+
+    {
+      "class": "DepictionStackView",
+      "tabname": "CHANGELOG",
+
+      "views": [
+        {
+          "class": "DepictionHeaderView",
+          "title": "Version 0.2.2"
         },
+
         {
-                    "class": "DepictionMarkdownView",
-          "markdown": "• Added editable multi-page 8x4 Control Center layouts",
-          "useSpacing": false
+          "class": "DepictionMarkdownView",
+          "markdown": "• GoldenCC initial release\n\n• Control Center customization\n\n• Editable module layout\n\n• Quick Access customization\n\n• Module resizing\n\n• Experimental duplicate modules\n\n• Layout persistence\n\n• Control Center reset option"
         },
+
         {
-                    "class": "DepictionMarkdownView",
-          "markdown": "• Added CCAster's control sheet, module resizing, and Quick Access Buttons",
-          "useSpacing": false
+          "class": "DepictionSeparatorView"
         },
+
         {
-                    "class": "DepictionMarkdownView",
-          "markdown": "• Added an option to preserve saved pages while limiting Control Center to page one",
-          "useSpacing": false
+          "class": "DepictionHeaderView",
+          "title": "Coming Soon"
+        },
+
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "• More module customization\n\n• Improved duplicate module support\n\n• Additional Control Center controls\n\n• More iOS versions"
         }
       ]
     }

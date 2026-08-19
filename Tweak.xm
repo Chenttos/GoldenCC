@@ -36,7 +36,7 @@ static BOOL gModuleBordersEnabled = YES;
 static BOOL gBorderBreathingEnabled = YES;
 static BOOL gHapticsEnabled = YES;
 static BOOL const gCCAUseNativeOpeningCompensation = NO;
-static CGFloat const kCCARestingModuleOffset = -12.0;
+static CGFloat const kCCARestingModuleOffset = -18.0;
 static CGFloat const kCCAEditingModuleOffset = -10.0;
 static NSUInteger const kCCAMinimumGridRows = 8;
 // CCUILayoutOptions is patched below so the real collection and every
@@ -10928,11 +10928,10 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
         children[@"CCUIConnectivityBluetoothViewController"].view.hidden = YES;
     }];
 
-    CGFloat naturalMiniCell = floor(compactMetrics.cell * 0.444);
-    CGFloat naturalMiniGap = compactMetrics.cell - naturalMiniCell * 2.0;
-    CGFloat requestedMiniGap = MAX(2.0, naturalMiniGap - 3.0);
-    CGFloat miniCell = floor((compactMetrics.cell - requestedMiniGap) * 0.5);
-    CGFloat miniGap = compactMetrics.cell - miniCell * 2.0;
+    // GoldenCC: smaller inner connectivity buttons with more separation.
+    CGFloat miniCell = floor(compactMetrics.cell * 0.38);
+    miniCell = MAX(15.0, miniCell);
+    CGFloat miniGap = MAX(8.0, compactMetrics.cell - (miniCell * 2.0));
     if (!miniCluster) {
         miniCluster = [[UIView alloc] initWithFrame:compactMetrics.bottomRight];
         miniCluster.tag = kCCAConnectivityMiniClusterTag;
@@ -10949,7 +10948,7 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
             UIView *tile = [[UIView alloc] initWithFrame:CGRectMake(x, y, miniCell, miniCell)];
             tile.backgroundColor = [colors[index] colorWithAlphaComponent:index == 1 ? 0.85 : 0.18];
             tile.layer.cornerRadius = miniCell * 0.5;
-            UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:9.0 weight:UIImageSymbolWeightSemibold];
+            UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:8.0 weight:UIImageSymbolWeightSemibold];
             UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:symbols[index] withConfiguration:configuration]];
             icon.frame = tile.bounds; icon.contentMode = UIViewContentModeCenter; icon.tintColor = colors[index];
             [tile addSubview:icon];

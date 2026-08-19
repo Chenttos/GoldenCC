@@ -1257,14 +1257,48 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
 @interface SBUIPowerDownViewController : UIViewController
 @end
 
+static NSBundle *CCABundleForControlCenterModuleIdentifier(NSString *identifier) {
+    if (!identifier.length) return nil;
+
+    NSArray<NSString *> *directories = @[
+        @"/System/Library/ControlCenter/Bundles",
+        @"/Library/ControlCenter/Bundles",
+        @"/var/jb/Library/ControlCenter/Bundles",
+        @"/var/jb/System/Library/ControlCenter/Bundles"
+    ];
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *directory in directories) {
+        NSArray<NSString *> *items = [fm contentsOfDirectoryAtPath:directory error:nil];
+        for (NSString *item in items) {
+            if (![item.pathExtension.lowercaseString isEqualToString:@"bundle"]) continue;
+
+            NSString *path = [directory stringByAppendingPathComponent:item];
+            NSBundle *bundle = [NSBundle bundleWithPath:path];
+            if (!bundle) continue;
+
+            NSString *bundleIdentifier = bundle.bundleIdentifier;
+            if ([bundleIdentifier isEqualToString:identifier]) return bundle;
+        }
+    }
+
+    return nil;
+}
+
 @interface CCAOwnedDuplicateModuleViewController : UIViewController
 @property (nonatomic, copy) NSString *moduleIdentifier;
 @property (nonatomic, copy) NSString *baseModuleIdentifier;
+@property (nonatomic, strong) id moduleInstance;
+@property (nonatomic, strong) id moduleContext;
+@property (nonatomic, strong) UIViewController *contentViewController;
 @end
 
 @implementation CCAOwnedDuplicateModuleViewController
 @synthesize moduleIdentifier = _moduleIdentifier;
 @synthesize baseModuleIdentifier = _baseModuleIdentifier;
+@synthesize moduleInstance = _moduleInstance;
+@synthesize moduleContext = _moduleContext;
+@synthesize contentViewController = _contentViewController;
 
 - (instancetype)initWithModuleIdentifier:(NSString *)moduleIdentifier baseIdentifier:(NSString *)baseIdentifier {
     self = [super initWithNibName:nil bundle:nil];
@@ -1281,6 +1315,114 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
     view.clipsToBounds = YES;
     view.layer.cornerCurve = kCACornerCurveContinuous;
     self.view = view;
+
+    // Instantiate a real Control Center module instead of using an empty
+    // placeholder. Each duplicate receives its own Apple-facing identifier
+    // such as "com.apple.foo#2", "com.apple.foo#3", etc.
+    NSBundle *bundle = CCABundleForControlCenterModuleIdentifier(self.baseModuleIdentifier);
+    if (!bundle || !(bundle.isLoaded || [bundle load])) return;
+
+    Class principal = bundle.principalClass;
+    if (!principal) return;
+
+    Class contextClass = NSClassFromString(@"CCUIContentModuleContext");
+    id context = nil;
+
+    if (contextClass) {
+        SEL contextInit = NSSelectorFromString(@"initWithModuleIdentifier:");
+        if ([contextClass instancesRespondToSelector:contextInit]) {
+            @try {
+                context = ((id (*)(id, SEL, id))objc_msgSend)(
+                    [contextClass alloc], contextInit, self.moduleIdentifier
+                );
+            } @catch (__unused NSException *exception) {
+                context = nil;
+            }
+        }
+
+        if (!context) {
+            @try {
+                context = [contextClass new];
+                [context setValue:self.moduleIdentifier forKey:@"moduleIdentifier"];
+            } @catch (__unused NSException *exception) {
+                context = nil;
+            }
+        }
+    }
+
+    id module = nil;
+    SEL moduleContextInit = NSSelectorFromString(@"initWithContentModuleContext:");
+
+    if (context && [principal instancesRespondToSelector:moduleContextInit]) {
+        @try {
+            module = ((id (*)(id, SEL, id))objc_msgSend)(
+                [principal alloc], moduleContextInit, context
+            );
+        } @catch (__unused NSException *exception) {
+            module = nil;
+        }
+    }
+
+    if (!module) {
+        @try {
+            module = [[principal alloc] init];
+        } @catch (__unused NSException *exception) {
+            module = nil;
+        }
+    }
+
+    if (!module) return;
+
+    if (context && [module respondsToSelector:NSSelectorFromString(@"setContentModuleContext:")]) {
+        @try {
+            ((void (*)(id, SEL, id))objc_msgSend)(
+                module,
+                NSSelectorFromString(@"setContentModuleContext:"),
+                context
+            );
+        } @catch (__unused NSException *exception) {}
+    }
+
+    UIViewController *contentController = nil;
+    if ([module isKindOfClass:[UIViewController class]]) {
+        contentController = (UIViewController *)module;
+    } else if ([module respondsToSelector:NSSelectorFromString(@"contentViewController")]) {
+        @try {
+            contentController = ((id (*)(id, SEL))objc_msgSend)(
+                module, NSSelectorFromString(@"contentViewController")
+            );
+        } @catch (__unused NSException *exception) {
+            contentController = nil;
+        }
+    }
+
+    if (!contentController || !contentController.view) return;
+
+    self.moduleInstance = module;
+    self.moduleContext = context;
+    self.contentViewController = contentController;
+
+    [self addChildViewController:contentController];
+    contentController.view.frame = self.view.bounds;
+    contentController.view.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    contentController.view.userInteractionEnabled = YES;
+    [self.view addSubview:contentController.view];
+
+    @try {
+        [contentController beginAppearanceTransition:YES animated:NO];
+        [contentController endAppearanceTransition];
+    } @catch (__unused NSException *exception) {}
+
+    [contentController didMoveToParentViewController:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
+    self.contentViewController.view.frame = self.view.bounds;
+    self.contentViewController.view.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 }
 
 @end
@@ -1424,9 +1566,21 @@ static NSString *CCADuplicateFamilyIdentifierForIdentifier(NSString *identifier)
     return identifier;
 }
 
+static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier);
+
 static BOOL CCAModuleIdentifierSupportsOwnedDuplicates(NSString *identifier) {
-    NSString *familyIdentifier = CCADuplicateFamilyIdentifierForIdentifier(identifier).lowercaseString;
-    return [familyIdentifier containsString:@"ccaster.connectivity"];
+    NSString *familyIdentifier = CCADuplicateFamilyIdentifierForIdentifier(identifier);
+    if (!familyIdentifier.length) return NO;
+
+    // GoldenCC can create independent instances of regular Control Center
+    // modules. Quick Access (+ / Power) buttons are not module identifiers and
+    // therefore are not affected by this system.
+    //
+    // Keep legacy physical instances excluded; they are already managed by
+    // Apple's module instance system and must not be wrapped again.
+    if (CCAIdentifierIsLegacyPhysicalDuplicate(familyIdentifier)) return NO;
+
+    return YES;
 }
 
 static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier) {
@@ -4160,7 +4314,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (gAddButtonEnabled) {
         UIButton *add = [self cornerButtonWithSymbol:@"plus" action:@selector(addTapped:) tag:181001 materialRoot:materialRoot];
         [host addSubview:add];
-        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-18.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
     }
     if (gPowerButtonEnabled) {
         UIButton *power = [self cornerButtonWithSymbol:@"power" action:@selector(ignoreTap:) tag:181002 materialRoot:materialRoot];
@@ -4169,7 +4323,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         hold.minimumPressDuration = 0.75;
         [power addGestureRecognizer:hold];
         [host addSubview:power];
-        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-18.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
     }
     // The provider-driven collection rebuild replaces the header pocket, so
     // this host can be re-created mid-session. When Control Center is already

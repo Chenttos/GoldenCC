@@ -186,6 +186,7 @@ static NSInteger const kCCAConnectivityExpandButtonTag = 181033;
 static NSInteger const kCCAConnectivityCompactAirDropTag = 181034;
 static NSInteger const kCCAConnectivityCompactBluetoothTag = 181035;
 static NSInteger const kCCAQuickAccessDismissalProxyTag = 181039;
+static CGFloat const kCCAQuickAccessVerticalOffset = -10.0;
 static NSInteger const kCCAConnectivityTileActionProxyTag = 181049;
 static NSInteger const kCCAConnectivitySelectedSurfaceTag = 181050;
 static NSInteger const kCCAConnectivityBluetoothPackageGlyphTag = 181051;
@@ -2634,7 +2635,7 @@ static void CCAPrepareOverlayChromeForExpandedDismissal(UIViewController *overla
                 [UIView performWithoutAnimation:^{
                     liveQuickAccess.hidden = NO;
                     liveQuickAccess.alpha = 1.0;
-                    liveQuickAccess.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
+                    liveQuickAccess.transform = CGAffineTransformIdentity;
                     CCASetQuickAccessMaterialsHidden(liveQuickAccess, YES);
                     for (UIView *button in liveQuickAccess.subviews) {
                         for (UIView *child in button.subviews) if (child.tag != kCCAPowerMaterialTag) child.alpha = 0.0;
@@ -2658,7 +2659,7 @@ static void CCAPrepareOverlayChromeForExpandedDismissal(UIViewController *overla
                     [UIView performWithoutAnimation:^{
                         CCASetQuickAccessMaterialsHidden(liveQuickAccess, NO);
                         liveQuickAccess.alpha = 1.0;
-                        liveQuickAccess.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
+                        liveQuickAccess.transform = CGAffineTransformIdentity;
                     }];
                 }
                 [quickAccessProxy removeFromSuperview];
@@ -3741,13 +3742,13 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (!shouldHide && CCAExpandedChromeRevealActive() &&
         (!host.hidden || host.alpha > 0.05 || host.layer.animationKeys.count > 0)) {
         host.hidden = NO;
-        host.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
+        host.transform = CGAffineTransformIdentity;
         return;
     }
     if (!shouldHide) host.hidden = NO;
     void (^changes)(void) = ^{
         host.alpha = shouldHide ? 0.0 : 1.0;
-        host.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
+        host.transform = CGAffineTransformIdentity;
         if (!shouldHide) CCASetQuickAccessMaterialsHidden(host, NO);
     };
     void (^completion)(BOOL) = ^(__unused BOOL finished) {
@@ -4161,7 +4162,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (gAddButtonEnabled) {
         UIButton *add = [self cornerButtonWithSymbol:@"plus" action:@selector(addTapped:) tag:181001 materialRoot:materialRoot];
         [host addSubview:add];
-        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:kCCAQuickAccessVerticalOffset], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
     }
     if (gPowerButtonEnabled) {
         UIButton *power = [self cornerButtonWithSymbol:@"power" action:@selector(ignoreTap:) tag:181002 materialRoot:materialRoot];
@@ -4170,7 +4171,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         hold.minimumPressDuration = 0.75;
         [power addGestureRecognizer:hold];
         [host addSubview:power];
-        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:kCCAQuickAccessVerticalOffset], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
     }
     // The provider-driven collection rebuild replaces the header pocket, so
     // this host can be re-created mid-session. When Control Center is already
@@ -9907,6 +9908,27 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     %orig;
     if (!gEnabled) return;
     UIScrollView *scrollView = (UIScrollView *)(id)self;
+
+    // The native collection relayout can restore its transform after GoldenCC
+    // applies the resting offset. Reassert the requested -48pt resting position
+    // after every native layout pass. This is deliberately disabled while an
+    // expanded module, paging gesture or edit transition owns the geometry.
+    if (!gEditModeActive && !gCCAExpandedModuleOpen && !gCCAPagerTransitionActive &&
+        !gCCAPagerScrubbingActive && !gCCAEditTransitionActive) {
+        UIView *collectionView = (UIView *)(id)self;
+        CGAffineTransform base = CGAffineTransformIdentity;
+        NSValue *storedBase = objc_getAssociatedObject(collectionView, kCCAOriginalTransformKey);
+        if (storedBase) {
+            base = storedBase.CGAffineTransformValue;
+        } else {
+            CGAffineTransform current = collectionView.transform;
+            base = CGAffineTransformTranslate(current, 0.0, -kCCARestingModuleOffset);
+            objc_setAssociatedObject(collectionView, kCCAOriginalTransformKey,
+                                     [NSValue valueWithCGAffineTransform:base],
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        collectionView.transform = CGAffineTransformTranslate(base, 0.0, kCCARestingModuleOffset);
+    }
     scrollView.alwaysBounceVertical = NO;
     scrollView.alwaysBounceHorizontal = NO;
     scrollView.bounces = NO;
@@ -10778,6 +10800,49 @@ static void CCAStyleExpandedConnectivityChild(UIViewController *child, UIView *c
     else subtitle.text = subtitleText;
 }
 
+static void CCAReapplyGoldenLargeConnectivityFrames(UIViewController *controller) {
+    if (!controller || !controller.view || gCCAExpandedModuleOpen) return;
+    UIView *root = controller.view;
+    CCAConnectivityCompactMetrics compactMetrics = CCAConnectivityCompactMetricsForBounds(root.bounds);
+    if (compactMetrics.cell < 1.0) return;
+
+    CGFloat largeCell = floor(compactMetrics.cell * 0.90);
+    CGFloat largeGap = compactMetrics.gap + 10.0;
+    CGFloat largeGridWidth = largeCell * 2.0 + largeGap;
+    CGFloat largeOriginX = round((CGRectGetWidth(root.bounds) - largeGridWidth) * 0.5);
+    CGFloat largeOriginY = round((CGRectGetHeight(root.bounds) - largeGridWidth) * 0.5);
+
+    CGRect topLeft = CGRectMake(largeOriginX, largeOriginY, largeCell, largeCell);
+    CGRect topRight = CGRectMake(largeOriginX + largeCell + largeGap, largeOriginY, largeCell, largeCell);
+    CGRect bottomLeft = CGRectMake(largeOriginX, largeOriginY + largeCell + largeGap, largeCell, largeCell);
+
+    NSDictionary<NSString *, NSValue *> *frames = @{
+        @"CCUIConnectivityAirplaneViewController": [NSValue valueWithCGRect:topLeft],
+        @"CCUIConnectivityWifiViewController": [NSValue valueWithCGRect:bottomLeft],
+    };
+
+    [UIView performWithoutAnimation:^{
+        for (NSString *name in frames) {
+            UIViewController *child = CCAConnectivityChild(controller, name);
+            if (!child.view) continue;
+            child.view.hidden = NO;
+            child.view.alpha = 1.0;
+            child.view.transform = CGAffineTransformIdentity;
+            child.view.frame = frames[name].CGRectValue;
+            [child.view.superview bringSubviewToFront:child.view];
+        }
+
+        UIView *airDrop = [root viewWithTag:kCCAConnectivityCompactAirDropTag];
+        if (airDrop) {
+            airDrop.hidden = NO;
+            airDrop.alpha = 1.0;
+            airDrop.transform = CGAffineTransformIdentity;
+            airDrop.frame = topRight;
+            [root bringSubviewToFront:airDrop];
+        }
+    }];
+}
+
 static void CCAConfigureConnectivityLayout(UIViewController *controller) {
     if (!gEnabled || !controller.view) return;
     UIView *root = controller.view;
@@ -10911,10 +10976,10 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
 
     CCAConnectivityCompactMetrics compactMetrics = CCAConnectivityCompactMetricsForBounds(root.bounds);
 
-    // GoldenCC: smaller large connectivity controls with more separation.
+    // GoldenCC: slightly smaller large connectivity controls with more separation.
     // The bottom-right mini cluster remains independent.
-    CGFloat largeCell = floor(compactMetrics.cell * 0.82);
-    CGFloat largeGap = compactMetrics.gap + 14.0;
+    CGFloat largeCell = floor(compactMetrics.cell * 0.90);
+    CGFloat largeGap = compactMetrics.gap + 10.0;
     CGFloat largeGridWidth = largeCell * 2.0 + largeGap;
     CGFloat largeOriginX = round((CGRectGetWidth(root.bounds) - largeGridWidth) * 0.5);
     CGFloat largeOriginY = round((CGRectGetHeight(root.bounds) - largeGridWidth) * 0.5);
@@ -10985,6 +11050,16 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
                                        CGRectGetMinY(compactMetrics.bottomRight), miniCell, miniCell);
     UIButton *bluetoothProxy = CCAConnectivitySnapshotProxy(root, kCCAConnectivityCompactBluetoothTag, bluetoothFrame,
                                                             children[@"CCUIConnectivityBluetoothViewController"]);
+    // Some CCUI child controllers relayout themselves on the next run-loop turn.
+    // Reassert the three compact large controls after that native pass so all
+    // three (Airplane, Wi-Fi and AirDrop) receive the same geometry.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CCAReapplyGoldenLargeConnectivityFrames(controller);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.06 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        CCAReapplyGoldenLargeConnectivityFrames(controller);
+    });
+
     if (![objc_getAssociatedObject(controller, kCCAConnectivityProxyRefreshScheduledKey) boolValue]) {
         objc_setAssociatedObject(controller, kCCAConnectivityProxyRefreshScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         __weak UIViewController *weakController = controller;

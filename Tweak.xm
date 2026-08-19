@@ -36,7 +36,7 @@ static BOOL gModuleBordersEnabled = YES;
 static BOOL gBorderBreathingEnabled = YES;
 static BOOL gHapticsEnabled = YES;
 static BOOL const gCCAUseNativeOpeningCompensation = NO;
-static CGFloat const kCCARestingModuleOffset = -18.0;
+static CGFloat const kCCARestingModuleOffset = -48.0;
 static CGFloat const kCCAEditingModuleOffset = -10.0;
 static NSUInteger const kCCAMinimumGridRows = 8;
 // CCUILayoutOptions is patched below so the real collection and every
@@ -2583,7 +2583,7 @@ static UIView *CCACreateQuickAccessDismissalProxy(UIViewController *overlay, UIV
     }];
     if (!proxy.subviews.count) return nil;
     proxy.alpha = 0.0;
-    proxy.transform = CGAffineTransformMakeTranslation(0.0, -9.0);
+    proxy.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
     [overlay.view addSubview:proxy];
     return proxy;
 }
@@ -2634,7 +2634,7 @@ static void CCAPrepareOverlayChromeForExpandedDismissal(UIViewController *overla
                 [UIView performWithoutAnimation:^{
                     liveQuickAccess.hidden = NO;
                     liveQuickAccess.alpha = 1.0;
-                    liveQuickAccess.transform = CGAffineTransformIdentity;
+                    liveQuickAccess.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
                     CCASetQuickAccessMaterialsHidden(liveQuickAccess, YES);
                     for (UIView *button in liveQuickAccess.subviews) {
                         for (UIView *child in button.subviews) if (child.tag != kCCAPowerMaterialTag) child.alpha = 0.0;
@@ -2658,7 +2658,7 @@ static void CCAPrepareOverlayChromeForExpandedDismissal(UIViewController *overla
                     [UIView performWithoutAnimation:^{
                         CCASetQuickAccessMaterialsHidden(liveQuickAccess, NO);
                         liveQuickAccess.alpha = 1.0;
-                        liveQuickAccess.transform = CGAffineTransformIdentity;
+                        liveQuickAccess.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
                     }];
                 }
                 [quickAccessProxy removeFromSuperview];
@@ -3734,19 +3734,20 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         [UIView performWithoutAnimation:^{
             host.hidden = NO;
             host.alpha = 0.0;
-            host.transform = CGAffineTransformIdentity;
+            host.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
         }];
         return;
     }
     if (!shouldHide && CCAExpandedChromeRevealActive() &&
         (!host.hidden || host.alpha > 0.05 || host.layer.animationKeys.count > 0)) {
         host.hidden = NO;
+        host.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
         return;
     }
     if (!shouldHide) host.hidden = NO;
     void (^changes)(void) = ^{
         host.alpha = shouldHide ? 0.0 : 1.0;
-        host.transform = shouldHide ? CGAffineTransformMakeTranslation(0.0, -9.0) : CGAffineTransformIdentity;
+        host.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
         if (!shouldHide) CCASetQuickAccessMaterialsHidden(host, NO);
     };
     void (^completion)(BOOL) = ^(__unused BOOL finished) {
@@ -10909,9 +10910,22 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
     CCARestoreConnectivityContainerMaterial(root);
 
     CCAConnectivityCompactMetrics compactMetrics = CCAConnectivityCompactMetricsForBounds(root.bounds);
+
+    // GoldenCC: smaller large connectivity controls with more separation.
+    // The bottom-right mini cluster remains independent.
+    CGFloat largeCell = floor(compactMetrics.cell * 0.82);
+    CGFloat largeGap = compactMetrics.gap + 14.0;
+    CGFloat largeGridWidth = largeCell * 2.0 + largeGap;
+    CGFloat largeOriginX = round((CGRectGetWidth(root.bounds) - largeGridWidth) * 0.5);
+    CGFloat largeOriginY = round((CGRectGetHeight(root.bounds) - largeGridWidth) * 0.5);
+
+    CGRect goldenTopLeft = CGRectMake(largeOriginX, largeOriginY, largeCell, largeCell);
+    CGRect goldenTopRight = CGRectMake(largeOriginX + largeCell + largeGap, largeOriginY, largeCell, largeCell);
+    CGRect goldenBottomLeft = CGRectMake(largeOriginX, largeOriginY + largeCell + largeGap, largeCell, largeCell);
+
     NSDictionary<NSString *, NSValue *> *largeFrames = @{
-        @"CCUIConnectivityAirplaneViewController": [NSValue valueWithCGRect:compactMetrics.topLeft],
-        @"CCUIConnectivityWifiViewController": [NSValue valueWithCGRect:compactMetrics.bottomLeft],
+        @"CCUIConnectivityAirplaneViewController": [NSValue valueWithCGRect:goldenTopLeft],
+        @"CCUIConnectivityWifiViewController": [NSValue valueWithCGRect:goldenBottomLeft],
     };
     [UIView performWithoutAnimation:^{
         [largeFrames enumerateKeysAndObjectsUsingBlock:^(NSString *name, NSValue *frameValue, __unused BOOL *stop) {
@@ -10965,7 +10979,7 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
         tile.layer.cornerRadius = miniCell * 0.5;
         tile.subviews.firstObject.frame = tile.bounds;
     }];
-    UIButton *airDropProxy = CCAConnectivitySnapshotProxy(root, kCCAConnectivityCompactAirDropTag, compactMetrics.topRight,
+    UIButton *airDropProxy = CCAConnectivitySnapshotProxy(root, kCCAConnectivityCompactAirDropTag, goldenTopRight,
                                                           children[@"CCUIConnectivityAirDropViewController"]);
     CGRect bluetoothFrame = CGRectMake(CGRectGetMinX(compactMetrics.bottomRight) + miniCell + miniGap,
                                        CGRectGetMinY(compactMetrics.bottomRight), miniCell, miniCell);
@@ -11879,7 +11893,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     objc_setAssociatedObject(host, kCCAQuickAccessAnimationTokenKey, [NSObject new], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     host.hidden = clamped <= 0.001;
     host.alpha = clamped;
-    host.transform = CGAffineTransformMakeTranslation(0.0, -12.0 * (1.0 - clamped));
+    host.transform = CGAffineTransformMakeTranslation(0.0, -10.0);
 }
 
 - (void)controlCenterViewController:(id)controller didChangePresentationState:(NSUInteger)state {

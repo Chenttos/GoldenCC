@@ -22,8 +22,8 @@ extern "C" int __isOSVersionAtLeast(int major, int minor, int patch)
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-static CFStringRef const kCCAPrefsDomain = CFSTR("com.futur3sn0w.ccaster.preferences");
-static NSString *const kCCAReloadNotification = @"com.futur3sn0w.ccaster/ReloadPrefs";
+static CFStringRef const kGoldenCCPrefsDomain = CFSTR("com.meowly.goldencc.preferences");
+static NSString *const kGoldenCCReloadNotification = @"com.meowly.goldencc/ReloadPrefs";
 
 static BOOL gEnabled = YES;
 static BOOL gQuickAccessButtonsEnabled = YES;
@@ -37,10 +37,10 @@ static BOOL gBorderBreathingEnabled = YES;
 static BOOL gHapticsEnabled = YES;
 static BOOL const gCCAUseNativeOpeningCompensation = NO;
 static CGFloat const kCCARestingModuleOffset = -8.0;
-static CGFloat const kCCAEditingModuleOffset = -48.0;
+static CGFloat const kCCAEditingModuleOffset = -10.0;
 static NSUInteger const kCCAMinimumGridRows = 8;
 // CCUILayoutOptions is patched below so the real collection and every
-// CCAster-owned grid use the same compact geometry.
+// GoldenCC-owned grid use the same compact geometry.
 static CGFloat kCCAGridCellSize = 67.0;
 static CGFloat kCCAGridGap = 12.0;
 static CGFloat const kCCAGridCellScale = 67.0 / 69.0;
@@ -67,11 +67,6 @@ static CGFloat const kCCAEditScrubModuleWrapperCenteringY = 118.0;
 static NSUInteger const kCCAMaxPages = 9;
 
 static NSHashTable<UIViewController *> *gOverlayControllers;
-
-// Forward declaration: this helper is used by edit/prefs hooks before its
-// implementation near the end of the file.
-static void CCAResyncPersistentDuplicatesForAllOverlays(void);
-static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier);
 static BOOL gEditModeActive = NO;
 static BOOL gCCAEditTransitionActive = NO;
 static NSUInteger gCCAEditTransitionGeneration = 0;
@@ -312,7 +307,7 @@ static __weak UIView *gCCAActiveDragModuleView = nil;
 static NSString *gCCAActiveDragModuleIdentifier = nil;
 static BOOL gCCAResizeInProgress = NO;
 static __weak UIView *gCCAActiveResizeModuleView = nil;
-// One physical home press/swipe can reach both CCAster's bottom-zone pan and
+// One physical home press/swipe can reach both GoldenCC's bottom-zone pan and
 // the native dismissal seams. Whichever exits edit mode first opens this
 // window so the sibling request from the same gesture cannot also close CC.
 static CFTimeInterval gCCAEditExitConsumedUntil = 0;
@@ -730,7 +725,7 @@ static void CCAFinishNativeScrollOpeningStabilization(UIViewController *overlay)
 
 // Directly regenerating iOS 16's live provider can desynchronize its parallel
 // identifier/size state, producing stretched sliders and compact-view labels.
-// Keep provider mutation disabled until CCAster owns an independent preview map.
+// Keep provider mutation disabled until GoldenCC owns an independent preview map.
 static BOOL const gCCAUseNativeLiveReflow = NO;
 static NSMutableDictionary<NSString *, NSValue *> *gCCANativeLayoutRects;
 static NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *gCCACustomOrigins;
@@ -961,7 +956,7 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
             fade.toValue = @(target);
             fade.duration = 0.12;
             fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [layer addAnimation:fade forKey:@"CCAsterCellFade"];
+            [layer addAnimation:fade forKey:@"CCACellFade"];
         }
         layer.opacity = target;
     }
@@ -1015,7 +1010,7 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
     if (pressure < 0.54 && touch.force < 2.0) return;
     objc_setAssociatedObject(self, kCCAConnectivityForceFiredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CCASetConnectivityProxyPressed(self, NO);
-    id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCAsterCoordinator"), @selector(shared));
+    id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCACoordinator"), @selector(shared));
     SEL action = @selector(connectivityTileProxyForcePressed:);
     if (coordinator && [coordinator respondsToSelector:action]) ((void (*)(id, SEL, id))objc_msgSend)(coordinator, action, self);
     [self cancelTrackingWithEvent:event];
@@ -1222,7 +1217,7 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
             diskAnimation.toValue = (__bridge id)disk.CGPath;
             diskAnimation.duration = 0.12;
             diskAnimation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [self.diskLayer addAnimation:diskAnimation forKey:@"CCAsterBrightnessDisk"];
+            [self.diskLayer addAnimation:diskAnimation forKey:@"CCABrightnessDisk"];
         }
         CGPathRef currentRayPath = ((CAShapeLayer *)self.rayLayer.presentationLayer).path ?: self.rayLayer.path;
         if (currentRayPath) {
@@ -1231,7 +1226,7 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
             pathAnimation.toValue = (__bridge id)rays.CGPath;
             pathAnimation.duration = 0.09;
             pathAnimation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-            [self.rayLayer addAnimation:pathAnimation forKey:@"CCAsterBrightnessRays"];
+            [self.rayLayer addAnimation:pathAnimation forKey:@"CCABrightnessRays"];
         }
         CGColorRef currentColor = ((CAShapeLayer *)self.diskLayer.presentationLayer).fillColor ?: self.diskLayer.fillColor;
         if (currentColor && !CGColorEqualToColor(currentColor, color.CGColor)) {
@@ -1244,7 +1239,7 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
                 colorAnimation.fromValue = (__bridge id)fromColor;
                 colorAnimation.toValue = (__bridge id)color.CGColor;
                 colorAnimation.duration = 0.13;
-                [layer addAnimation:colorAnimation forKey:@"CCAsterBrightnessColor"];
+                [layer addAnimation:colorAnimation forKey:@"CCABrightnessColor"];
             }
         }
     }
@@ -1262,329 +1257,42 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
 @interface SBUIPowerDownViewController : UIViewController
 @end
 
-@interface CCADuplicateContentModuleContext : NSObject
-@property (nonatomic, copy) NSString *moduleIdentifier;
-@end
-
-@implementation CCADuplicateContentModuleContext
-@end
-
 @interface CCAOwnedDuplicateModuleViewController : UIViewController
 @property (nonatomic, copy) NSString *moduleIdentifier;
 @property (nonatomic, copy) NSString *baseModuleIdentifier;
-@property (nonatomic, strong) id contentModule;
-@property (nonatomic, strong) UIViewController *contentViewController;
-@property (nonatomic, strong) id contentModuleContext;
 @end
-
-static NSBundle *CCABundleForDuplicateModuleIdentifier(NSString *identifier) {
-    if (!identifier.length) return nil;
-
-    NSArray<NSString *> *directories = @[
-        @"/System/Library/ControlCenter/Bundles",
-        @"/Library/ControlCenter/Bundles",
-        @"/var/jb/Library/ControlCenter/Bundles"
-    ];
-
-    NSFileManager *fm = [NSFileManager defaultManager];
-
-    for (NSString *directory in directories) {
-        NSArray<NSString *> *items =
-            [fm contentsOfDirectoryAtPath:directory error:nil];
-
-        for (NSString *item in items) {
-            if (![item.pathExtension.lowercaseString isEqualToString:@"bundle"])
-                continue;
-
-            NSString *path =
-                [directory stringByAppendingPathComponent:item];
-
-            NSBundle *bundle = [NSBundle bundleWithPath:path];
-            if (!bundle) continue;
-
-            if ([bundle.bundleIdentifier isEqualToString:identifier])
-                return bundle;
-        }
-    }
-
-    return nil;
-}
-
-static id CCANativeModuleInstanceManager(void) {
-    Class managerClass = NSClassFromString(@"CCUIModuleInstanceManager");
-    if (!managerClass) return nil;
-    SEL shared = NSSelectorFromString(@"sharedInstance");
-    if (![managerClass respondsToSelector:shared]) return nil;
-    @try {
-        return ((id (*)(id, SEL))objc_msgSend)(managerClass, shared);
-    } @catch (__unused NSException *exception) {
-        return nil;
-    }
-}
-
-static void CCAConfigureDuplicateContextForNativeManager(id context) {
-    if (!context) return;
-    id manager = CCANativeModuleInstanceManager();
-    if (!manager) return;
-    SEL setDelegate = NSSelectorFromString(@"setDelegate:");
-    if ([context respondsToSelector:setDelegate]) {
-        @try {
-            ((void (*)(id, SEL, id))objc_msgSend)(context, setDelegate, manager);
-        } @catch (__unused NSException *exception) {}
-    }
-}
-
-static id CCAInstantiateDuplicateContentModule(NSString *identifier,
-                                               NSString *baseIdentifier,
-                                               id *outContext) {
-    NSBundle *bundle =
-        CCABundleForDuplicateModuleIdentifier(baseIdentifier);
-
-    if (!bundle) return nil;
-
-    if (!bundle.loaded && ![bundle load])
-        return nil;
-
-    Class principalClass = bundle.principalClass;
-    if (!principalClass) return nil;
-
-    /*
-     * CCUIContentModuleContext is a private runtime object on iOS 16.
-     * Create it dynamically when available. The fallback proxy supplies the
-     * moduleIdentifier property expected by most Control Center modules.
-     */
-    id context = nil;
-
-    Class contextClass =
-        NSClassFromString(@"CCUIContentModuleContext");
-
-    if (contextClass) {
-        SEL initWithIdentifier =
-            NSSelectorFromString(@"initWithModuleIdentifier:");
-
-        if ([contextClass instancesRespondToSelector:initWithIdentifier]) {
-            @try {
-                context =
-                    ((id (*)(id, SEL, id))objc_msgSend)(
-                        [contextClass alloc],
-                        initWithIdentifier,
-                        identifier
-                    );
-            } @catch (__unused NSException *exception) {
-                context = nil;
-            }
-        }
-
-        if (!context) {
-            @try {
-                context = [contextClass new];
-
-                if ([context respondsToSelector:
-                    NSSelectorFromString(@"setModuleIdentifier:")]) {
-
-                    ((void (*)(id, SEL, id))objc_msgSend)(
-                        context,
-                        NSSelectorFromString(@"setModuleIdentifier:"),
-                        identifier
-                    );
-                }
-            } @catch (__unused NSException *exception) {
-                context = nil;
-            }
-        }
-    }
-
-    if (!context) {
-        CCADuplicateContentModuleContext *proxy =
-            [CCADuplicateContentModuleContext new];
-
-        proxy.moduleIdentifier = identifier;
-        context = proxy;
-    }
-
-    if (outContext)
-        *outContext = context;
-
-    /*
-     * Most iOS 16 Control Center bundles expose a principal class implementing
-     * CCUIContentModule and initialize it with:
-     *
-     * initWithContentModuleContext:
-     */
-    SEL designatedInit =
-        NSSelectorFromString(@"initWithContentModuleContext:");
-
-    if ([principalClass instancesRespondToSelector:designatedInit]) {
-        @try {
-            id module =
-                ((id (*)(id, SEL, id))objc_msgSend)(
-                    [principalClass alloc],
-                    designatedInit,
-                    context
-                );
-
-            if (module)
-                return module;
-        } @catch (__unused NSException *exception) {}
-    }
-
-    /*
-     * Some modules expose a plain initializer and create their content
-     * controller later.
-     */
-    @try {
-        id module = [[principalClass alloc] init];
-
-        if (module)
-            return module;
-    } @catch (__unused NSException *exception) {}
-
-    return nil;
-}
 
 @implementation CCAOwnedDuplicateModuleViewController
 @synthesize moduleIdentifier = _moduleIdentifier;
 @synthesize baseModuleIdentifier = _baseModuleIdentifier;
-@synthesize contentModule = _contentModule;
-@synthesize contentViewController = _contentViewController;
-@synthesize contentModuleContext = _contentModuleContext;
 
-- (instancetype)initWithModuleIdentifier:(NSString *)moduleIdentifier
-                            baseIdentifier:(NSString *)baseIdentifier {
+- (instancetype)initWithModuleIdentifier:(NSString *)moduleIdentifier baseIdentifier:(NSString *)baseIdentifier {
     self = [super initWithNibName:nil bundle:nil];
     if (!self) return nil;
-
     _moduleIdentifier = [moduleIdentifier copy];
     _baseModuleIdentifier = [baseIdentifier copy];
-
     return self;
 }
 
 - (void)loadView {
-    UIView *root =
-        [[UIView alloc] initWithFrame:CGRectZero];
-
-    root.backgroundColor = UIColor.clearColor;
-    root.opaque = NO;
-    root.clipsToBounds = YES;
-    root.layer.cornerCurve = kCACornerCurveContinuous;
-
-    self.view = root;
-
-    id context = nil;
-
-    id module =
-        CCAInstantiateDuplicateContentModule(
-            self.moduleIdentifier,
-            self.baseModuleIdentifier,
-            &context
-        );
-
-    self.contentModule = module;
-    self.contentModuleContext = context;
-
-    // Use the real Control Center module-instance manager as the context
-    // delegate. This is what makes actions, expansion requests, toggles and
-    // other CCUIContentModule callbacks behave like a native module instead
-    // of a passive copy of its view.
-    CCAConfigureDuplicateContextForNativeManager(context);
-
-    if (!module)
-        return;
-
-    /*
-     * A CCUIContentModule may itself be a view controller, or it may expose
-     * contentViewController.
-     */
-    UIViewController *contentController = nil;
-
-    if ([module isKindOfClass:[UIViewController class]]) {
-        contentController = (UIViewController *)module;
-    }
-
-    if (!contentController &&
-        [module respondsToSelector:
-            NSSelectorFromString(@"contentViewController")]) {
-
-        @try {
-            id candidate =
-                ((id (*)(id, SEL))objc_msgSend)(
-                    module,
-                    NSSelectorFromString(@"contentViewController")
-                );
-
-            if ([candidate isKindOfClass:[UIViewController class]])
-                contentController = candidate;
-
-        } @catch (__unused NSException *exception) {}
-    }
-
-    if (!contentController)
-        return;
-
-    self.contentViewController = contentController;
-
-    /*
-     * Give the real module its duplicate context if it exposes the setter.
-     */
-    SEL setContext =
-        NSSelectorFromString(@"setContentModuleContext:");
-
-    if ([module respondsToSelector:setContext]) {
-        @try {
-            ((void (*)(id, SEL, id))objc_msgSend)(
-                module,
-                setContext,
-                context
-            );
-        } @catch (__unused NSException *exception) {}
-    }
-
-    [self addChildViewController:contentController];
-
-    contentController.view.frame = root.bounds;
-    contentController.view.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth |
-        UIViewAutoresizingFlexibleHeight;
-
-    contentController.view.hidden = NO;
-    contentController.view.alpha = 1.0;
-    contentController.view.layer.opacity = 1.0;
-
-    [root addSubview:contentController.view];
-
-    [contentController didMoveToParentViewController:self];
-
-    // A duplicated module is a real child controller, not a screenshot. Keep
-    // its lifecycle and interaction state equivalent to a compact native
-    // module.
-    contentController.view.userInteractionEnabled = YES;
-    @try {
-        [contentController beginAppearanceTransition:YES animated:NO];
-        [contentController endAppearanceTransition];
-    } @catch (__unused NSException *exception) {}
-}
-
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-
-    if (self.contentViewController.view) {
-        self.contentViewController.view.frame =
-            self.view.bounds;
-    }
+    UIView *view = [[UIView alloc] initWithFrame:CGRectZero];
+    view.backgroundColor = UIColor.clearColor;
+    view.opaque = NO;
+    view.clipsToBounds = YES;
+    view.layer.cornerCurve = kCACornerCurveContinuous;
+    self.view = view;
 }
 
 @end
 
-
 static BOOL CCAPreferenceBool(NSString *key, BOOL fallback) {
     Boolean valid = false;
-    Boolean value = CFPreferencesGetAppBooleanValue((__bridge CFStringRef)key, kCCAPrefsDomain, &valid);
+    Boolean value = CFPreferencesGetAppBooleanValue((__bridge CFStringRef)key, kGoldenCCPrefsDomain, &valid);
     return valid ? (BOOL)value : fallback;
 }
 
 static void CCALoadPrefs(void) {
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
     gEnabled = CCAPreferenceBool(@"Enabled", YES);
     gQuickAccessButtonsEnabled = CCAPreferenceBool(@"QuickAccessButtonsEnabled", YES);
     gPagingEnabled = CCAPreferenceBool(@"PagingEnabled", YES);
@@ -1717,23 +1425,8 @@ static NSString *CCADuplicateFamilyIdentifierForIdentifier(NSString *identifier)
 }
 
 static BOOL CCAModuleIdentifierSupportsOwnedDuplicates(NSString *identifier) {
-    if (!identifier.length) return NO;
-
-    NSString *familyIdentifier =
-        CCADuplicateFamilyIdentifierForIdentifier(identifier);
-
-    if (!familyIdentifier.length) return NO;
-
-    // Quick Access controls are GoldenCC UI, not CC modules.
-    if ([familyIdentifier hasPrefix:@"GoldenCC.QuickAccess"] ||
-        [familyIdentifier hasPrefix:@"CCA.QuickAccess"]) {
-        return NO;
-    }
-
-    // Do not wrap Apple's own physical instance identifiers.
-    if (CCAIdentifierIsLegacyPhysicalDuplicate(familyIdentifier)) return NO;
-
-    return YES;
+    NSString *familyIdentifier = CCADuplicateFamilyIdentifierForIdentifier(identifier).lowercaseString;
+    return [familyIdentifier containsString:@"ccaster.connectivity"];
 }
 
 static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier) {
@@ -1743,14 +1436,14 @@ static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier) {
 }
 
 static void CCASaveDuplicateFamilies(void) {
-    CFPreferencesSetAppValue(CFSTR("COSMICDuplicateFamilies"), (__bridge CFPropertyListRef)[gCCADuplicateFamilies copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("COSMICDuplicateFamilies"), (__bridge CFPropertyListRef)[gCCADuplicateFamilies copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
 }
 
 static void CCASaveGridPreferences(void) {
-    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-    CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
 }
 
 static NSString *CCANextDuplicateIdentifierForFamily(NSString *familyIdentifier, NSSet<NSString *> *present) {
@@ -2474,7 +2167,7 @@ static BOOL CCAExpandedChromeRevealActive(void) {
 static void CCAApplyExpansionPageGeometrySync(UIViewController *overlay) {
     if (!overlay || gCCACurrentPage == 0) return;
     if (objc_getAssociatedObject(overlay, kCCAExpansionPageGeometrySyncKey)) return;
-    id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCAsterCoordinator"), @selector(shared));
+    id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCACoordinator"), @selector(shared));
     UIViewController *collection = ((id (*)(id, SEL, id))objc_msgSend)(coordinator, NSSelectorFromString(@"moduleCollectionControllerInOverlay:"), overlay);
     if (!collection.view) return;
     ((void (*)(id, SEL, id))objc_msgSend)(coordinator, NSSelectorFromString(@"capturePresentationStateForView:"), collection.view);
@@ -2493,7 +2186,7 @@ static void CCAApplyExpansionPageGeometrySync(UIViewController *overlay) {
     };
     objc_setAssociatedObject(overlay, kCCAExpansionPageGeometrySyncKey, record, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [UIView performWithoutAnimation:^{
-        [collection.view.layer removeAnimationForKey:@"CCAsterPageStackSlide"];
+        [collection.view.layer removeAnimationForKey:@"CCAPageStackSlide"];
         collection.view.transform = CGAffineTransformTranslate(base, 0.0, editOffset + pageOffset);
         collection.view.layer.sublayerTransform = sublayerBase;
     }];
@@ -2508,7 +2201,7 @@ static void CCARestoreExpansionPageGeometrySync(UIViewController *overlay) {
     NSValue *transformValue = record[@"transform"];
     NSValue *sublayerValue = record[@"sublayerTransform"];
     [UIView performWithoutAnimation:^{
-        [collectionView.layer removeAnimationForKey:@"CCAsterPageStackSlide"];
+        [collectionView.layer removeAnimationForKey:@"CCAPageStackSlide"];
         if ([transformValue isKindOfClass:[NSValue class]]) collectionView.transform = transformValue.CGAffineTransformValue;
         if ([sublayerValue isKindOfClass:[NSValue class]]) collectionView.layer.sublayerTransform = sublayerValue.CATransform3DValue;
         NSArray<NSDictionary *> *wrapperRecords = record[@"wrappers"];
@@ -2531,7 +2224,7 @@ static void CCAReassertExpansionPageGeometry(UIViewController *overlay) {
     NSValue *positionValue = objc_getAssociatedObject(collectionView, kCCAExpansionCollectionLayerPositionKey);
     CGFloat editOffset = gEditModeActive ? 0.0 : kCCARestingModuleOffset;
     CGFloat pageOffset = -(CGFloat)gCCACurrentPage * CCAVisualPageSpan();
-    [collectionView.layer removeAnimationForKey:@"CCAsterPageStackSlide"];
+    [collectionView.layer removeAnimationForKey:@"CCAPageStackSlide"];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     if (positionValue) collectionView.layer.position = positionValue.CGPointValue;
@@ -2907,7 +2600,7 @@ static void CCASetQuickAccessMaterialsHidden(UIView *quickAccess, BOOL hidden) {
 static void CCAPrepareOverlayChromeForExpandedDismissal(UIViewController *overlay) {
     if (!overlay.view || !gCCAControlCenterPresented) return;
     gCCAExpandedChromeRevealUntil = CACurrentMediaTime() + 0.65;
-    id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCAsterCoordinator"), @selector(shared));
+    id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCACoordinator"), @selector(shared));
     ((void (*)(id, SEL, id))objc_msgSend)(coordinator, NSSelectorFromString(@"installQuickAccessHostOnOverlay:"), overlay);
     ((void (*)(id, SEL, id))objc_msgSend)(coordinator, NSSelectorFromString(@"updatePageIndicatorsForOverlay:"), overlay);
     UIView *quickAccess = [overlay.view viewWithTag:181000];
@@ -3558,7 +3251,7 @@ static void CCAConfigureOddResizedModuleLayout(UIViewController *module) {
             proxy.tag = kCCAConnectivityTileActionProxyTag;
             proxy.backgroundColor = UIColor.clearColor;
             proxy.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCAsterCoordinator"), @selector(shared));
+            id coordinator = ((id (*)(id, SEL))objc_msgSend)(NSClassFromString(@"CCACoordinator"), @selector(shared));
             [proxy addTarget:coordinator action:@selector(connectivityTileProxyTapped:) forControlEvents:UIControlEventTouchUpInside];
             [proxy addTarget:coordinator action:@selector(connectivityTileProxyTouchDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
             [proxy addTarget:coordinator action:@selector(connectivityTileProxyTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
@@ -3891,7 +3584,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 @end
 
 
-@interface CCAsterCoordinator : NSObject <UIGestureRecognizerDelegate>
+@interface CCACoordinator : NSObject <UIGestureRecognizerDelegate>
 + (instancetype)shared;
 - (void)installOnOverlay:(UIViewController *)controller;
 - (void)installPagingOnOverlay:(UIViewController *)overlay;
@@ -3979,10 +3672,10 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, UIView *> *previewCache;
 @end
 
-@implementation CCAsterCoordinator
+@implementation CCACoordinator
 
 + (instancetype)shared {
-    static CCAsterCoordinator *shared;
+    static CCACoordinator *shared;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{ shared = [self new]; });
     return shared;
@@ -4024,7 +3717,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     [button bringSubviewToFront:glyphView];
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     button.translatesAutoresizingMaskIntoConstraints = NO;
-    button.accessibilityIdentifier = tag == 181001 ? @"CCAsterAddButton" : @"CCAsterPowerButton";
+    button.accessibilityIdentifier = tag == 181001 ? @"CCAAddButton" : @"CCAPowerButton";
     return button;
 }
 
@@ -4467,7 +4160,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (gAddButtonEnabled) {
         UIButton *add = [self cornerButtonWithSymbol:@"plus" action:@selector(addTapped:) tag:181001 materialRoot:materialRoot];
         [host addSubview:add];
-        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[add.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:22.0], [add.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [add.widthAnchor constraintEqualToConstant:40.0], [add.heightAnchor constraintEqualToConstant:40.0]]];
     }
     if (gPowerButtonEnabled) {
         UIButton *power = [self cornerButtonWithSymbol:@"power" action:@selector(ignoreTap:) tag:181002 materialRoot:materialRoot];
@@ -4476,7 +4169,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         hold.minimumPressDuration = 0.75;
         [power addGestureRecognizer:hold];
         [host addSubview:power];
-        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-10.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
+        [NSLayoutConstraint activateConstraints:@[[power.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-22.0], [power.topAnchor constraintEqualToAnchor:host.topAnchor constant:-48.0], [power.widthAnchor constraintEqualToConstant:40.0], [power.heightAnchor constraintEqualToConstant:40.0]]];
     }
     // The provider-driven collection rebuild replaces the header pocket, so
     // this host can be re-created mid-session. When Control Center is already
@@ -4577,8 +4270,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         gCCACurrentPage = MIN(gCCACurrentPage, gCCAPageCount - 1);
     }
     if (changed) {
-        CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-        CFPreferencesAppSynchronize(kCCAPrefsDomain);
+        CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+        CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
         UIViewController *collection = [self moduleCollectionControllerInOverlay:overlay];
         [collection.view setNeedsLayout];
     }
@@ -4888,7 +4581,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             remove.hidden = YES;
             resize.hidden = YES;
         }
-        [border.layer removeAnimationForKey:@"CCAsterBreathing"];
+        [border.layer removeAnimationForKey:@"CCABreathing"];
 
         float targetOpacity = selected ? 1.0f : 0.0f;
         if (animated) {
@@ -4902,7 +4595,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             fade.toValue = @(targetOpacity);
             fade.duration = duration;
             fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-            [module.view.layer addAnimation:fade forKey:@"CCAsterPageSettleFade"];
+            [module.view.layer addAnimation:fade forKey:@"CCAPageSettleFade"];
             [UIView animateWithDuration:duration delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
                 border.alpha = gEditModeActive && selected ? 1.0 : 0.0;
                 remove.alpha = gEditModeActive && selected && !gCCAEditChromeSuppressedForPaging ? 1.0 : 0.0;
@@ -5016,7 +4709,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         CATransform3D fromSublayerTransform = (gEditModeActive && gCCAPagerTransitionActive) ?
             collection.view.layer.sublayerTransform :
             (collection.view.layer.presentationLayer ? ((CALayer *)collection.view.layer.presentationLayer).sublayerTransform : collection.view.layer.sublayerTransform);
-        [collection.view.layer removeAnimationForKey:@"CCAsterPageStackSlide"];
+        [collection.view.layer removeAnimationForKey:@"CCAPageStackSlide"];
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
         changes();
@@ -5026,7 +4719,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         slide.toValue = [NSValue valueWithCATransform3D:targetSublayerTransform];
         slide.duration = duration;
         slide.timingFunction = [CAMediaTimingFunction functionWithControlPoints:0.18 :0.88 :0.20 :1.0];
-        [collection.view.layer addAnimation:slide forKey:@"CCAsterPageStackSlide"];
+        [collection.view.layer addAnimation:slide forKey:@"CCAPageStackSlide"];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (objc_getAssociatedObject(overlay, kCCAPageAnimationTokenKey) != token) return;
             gCCAPagerTransitionActive = NO;
@@ -5051,7 +4744,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             }
         });
     } else {
-        [collection.view.layer removeAnimationForKey:@"CCAsterPageStackSlide"];
+        [collection.view.layer removeAnimationForKey:@"CCAPageStackSlide"];
         if (!atomicPresentationReconcile) {
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
@@ -5088,10 +4781,10 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             @"bounds": [NSValue valueWithCGRect:visible.bounds],
             @"opacity": @(visible.opacity)
         }];
-        [layer removeAnimationForKey:@"CCAsterPageSettleTransform"];
-        [layer removeAnimationForKey:@"CCAsterPageSettleSublayerTransform"];
-        [layer removeAnimationForKey:@"CCAsterPageSettleBounds"];
-        [layer removeAnimationForKey:@"CCAsterPageSettleOpacity"];
+        [layer removeAnimationForKey:@"CCAPageSettleTransform"];
+        [layer removeAnimationForKey:@"CCAPageSettleSublayerTransform"];
+        [layer removeAnimationForKey:@"CCAPageSettleBounds"];
+        [layer removeAnimationForKey:@"CCAPageSettleOpacity"];
     }
 
     if (modelChanges) modelChanges();
@@ -5104,28 +4797,28 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         transform.toValue = [NSValue valueWithCATransform3D:layer.transform];
         transform.duration = duration;
         transform.timingFunction = curve;
-        [layer addAnimation:transform forKey:@"CCAsterPageSettleTransform"];
+        [layer addAnimation:transform forKey:@"CCAPageSettleTransform"];
 
         CABasicAnimation *sublayerTransform = [CABasicAnimation animationWithKeyPath:@"sublayerTransform"];
         sublayerTransform.fromValue = start[@"sublayerTransform"];
         sublayerTransform.toValue = [NSValue valueWithCATransform3D:layer.sublayerTransform];
         sublayerTransform.duration = duration;
         sublayerTransform.timingFunction = curve;
-        [layer addAnimation:sublayerTransform forKey:@"CCAsterPageSettleSublayerTransform"];
+        [layer addAnimation:sublayerTransform forKey:@"CCAPageSettleSublayerTransform"];
 
         CABasicAnimation *bounds = [CABasicAnimation animationWithKeyPath:@"bounds"];
         bounds.fromValue = start[@"bounds"];
         bounds.toValue = [NSValue valueWithCGRect:layer.bounds];
         bounds.duration = duration;
         bounds.timingFunction = curve;
-        [layer addAnimation:bounds forKey:@"CCAsterPageSettleBounds"];
+        [layer addAnimation:bounds forKey:@"CCAPageSettleBounds"];
 
         CABasicAnimation *opacity = [CABasicAnimation animationWithKeyPath:@"opacity"];
         opacity.fromValue = start[@"opacity"];
         opacity.toValue = @(layer.opacity);
         opacity.duration = duration;
         opacity.timingFunction = curve;
-        [layer addAnimation:opacity forKey:@"CCAsterPageSettleOpacity"];
+        [layer addAnimation:opacity forKey:@"CCAPageSettleOpacity"];
     }];
 
     id token = [NSObject new];
@@ -5133,10 +4826,10 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (objc_getAssociatedObject(overlay, kCCAPageAnimationTokenKey) != token) return;
         for (CALayer *layer in layers) {
-            [layer removeAnimationForKey:@"CCAsterPageSettleTransform"];
-            [layer removeAnimationForKey:@"CCAsterPageSettleSublayerTransform"];
-            [layer removeAnimationForKey:@"CCAsterPageSettleBounds"];
-            [layer removeAnimationForKey:@"CCAsterPageSettleOpacity"];
+            [layer removeAnimationForKey:@"CCAPageSettleTransform"];
+            [layer removeAnimationForKey:@"CCAPageSettleSublayerTransform"];
+            [layer removeAnimationForKey:@"CCAPageSettleBounds"];
+            [layer removeAnimationForKey:@"CCAPageSettleOpacity"];
         }
         if (completion) completion();
     });
@@ -5384,20 +5077,20 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         // deliberately bounded to transform + opacity.
         CCAEditGridView *grid = gEditModeActive ? [self editGridForPage:candidate overlay:overlay] : nil;
         if (grid) {
-            [grid.layer removeAnimationForKey:@"CCAsterPagerPopScale"];
-            [grid.layer removeAnimationForKey:@"CCAsterPagerPopFade"];
+            [grid.layer removeAnimationForKey:@"CCAPagerPopScale"];
+            [grid.layer removeAnimationForKey:@"CCAPagerPopFade"];
             CAKeyframeAnimation *gridScale = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
             gridScale.values = @[@0.90, @1.025, @1.0];
             gridScale.keyTimes = @[@0.0, @0.68, @1.0];
             gridScale.duration = 0.20;
             gridScale.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-            [grid.layer addAnimation:gridScale forKey:@"CCAsterPagerPopScale"];
+            [grid.layer addAnimation:gridScale forKey:@"CCAPagerPopScale"];
             CAKeyframeAnimation *gridFade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
             gridFade.values = @[@0.08, @0.86, @1.0];
             gridFade.keyTimes = @[@0.0, @0.62, @1.0];
             gridFade.duration = 0.18;
             gridFade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-            [grid.layer addAnimation:gridFade forKey:@"CCAsterPagerPopFade"];
+            [grid.layer addAnimation:gridFade forKey:@"CCAPagerPopFade"];
         }
         for (UIViewController *module in CCACollectModuleControllers(overlay)) {
             NSString *identifier = CCAModuleIdentifier(module);
@@ -5408,20 +5101,20 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             NSArray<NSNumber *> *origin = gCCACustomOrigins[identifier];
             if (origin.count >= 2) rect.origin = (CCUILayoutPoint){origin[0].unsignedIntegerValue, origin[1].unsignedIntegerValue};
             if (CCAPageForRect(rect) != candidate) continue;
-            [module.view.layer removeAnimationForKey:@"CCAsterPagerPopScale"];
-            [module.view.layer removeAnimationForKey:@"CCAsterPagerPopFade"];
+            [module.view.layer removeAnimationForKey:@"CCAPagerPopScale"];
+            [module.view.layer removeAnimationForKey:@"CCAPagerPopFade"];
             CAKeyframeAnimation *scale = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
             scale.values = @[@0.90, @1.025, @1.0];
             scale.keyTimes = @[@0.0, @0.68, @1.0];
             scale.duration = 0.20;
             scale.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-            [module.view.layer addAnimation:scale forKey:@"CCAsterPagerPopScale"];
+            [module.view.layer addAnimation:scale forKey:@"CCAPagerPopScale"];
             CAKeyframeAnimation *fade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
             fade.values = @[@0.08, @0.86, @1.0];
             fade.keyTimes = @[@0.0, @0.62, @1.0];
             fade.duration = 0.18;
             fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-            [module.view.layer addAnimation:fade forKey:@"CCAsterPagerPopFade"];
+            [module.view.layer addAnimation:fade forKey:@"CCAPagerPopFade"];
         }
     }
 
@@ -5504,13 +5197,13 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         collection.view.alpha = baseAlpha;
     } completion:^{
         for (UIViewController *module in CCACollectModuleControllers(overlay)) {
-            [module.view.layer removeAnimationForKey:@"CCAsterPagerPopScale"];
-            [module.view.layer removeAnimationForKey:@"CCAsterPagerPopFade"];
+            [module.view.layer removeAnimationForKey:@"CCAPagerPopScale"];
+            [module.view.layer removeAnimationForKey:@"CCAPagerPopFade"];
         }
         NSMutableDictionary<NSNumber *, CCAEditGridView *> *pageGrids = objc_getAssociatedObject(overlay, kCCAEditPageGridsKey);
         for (CCAEditGridView *grid in pageGrids.allValues) {
-            [grid.layer removeAnimationForKey:@"CCAsterPagerPopScale"];
-            [grid.layer removeAnimationForKey:@"CCAsterPagerPopFade"];
+            [grid.layer removeAnimationForKey:@"CCAPagerPopScale"];
+            [grid.layer removeAnimationForKey:@"CCAPagerPopFade"];
         }
         gCCAPagerScrubbingActive = NO;
         gCCAPagerTransitionActive = NO;
@@ -5569,7 +5262,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (controller) gCCAPresentationController = controller;
     if (overlay) {
         // The pull gesture can begin before viewDidAppear/viewDidLayoutSubviews
-        // has installed CCAster's pager.  Previously the tracker returned here,
+        // has installed GoldenCC's pager.  Previously the tracker returned here,
         // so manually touching the pager was effectively required to prime the
         // next presentation. Bootstrap the persistent overlay on the first
         // pull callback instead.
@@ -5783,7 +5476,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         // that state makes its scale compose with a moving native transform,
         // which produces the jump/halfway state seen at the handoff. Claim the
         // gesture now, then finish the native reveal on the next main-loop turn
-        // before applying any CCAster pager transforms.
+        // before applying any GoldenCC pager transforms.
         gCCAPresentationNativeSettlePending = YES;
         gCCAPresentationReleasedWhileSettling = NO;
         __weak UIViewController *weakOverlay = overlay;
@@ -6080,7 +5773,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             }];
         }
         // The private scroll view can receive a final deferred offset write
-        // after its pan is re-enabled. Reassert both native and CCAster settled
+        // after its pan is re-enabled. Reassert both native and GoldenCC settled
         // geometry across the short snap window so no page remains one span
         // above or below its selected indicator.
         if (!gEditModeActive) {
@@ -6587,7 +6280,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (button) return button;
     button = [CCAExpandedHitButton buttonWithType:UIButtonTypeCustom];
     button.tag = kCCAAddControlButtonTag;
-    button.accessibilityIdentifier = @"CCAsterAddControlButton";
+    button.accessibilityIdentifier = @"CCAAddControlButton";
     button.backgroundColor = UIColor.clearColor;
     button.tintColor = UIColor.whiteColor;
     UIImageSymbolConfiguration *symbolConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:10.0 weight:UIImageSymbolWeightSemibold];
@@ -6615,7 +6308,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     // Materials (platters, slider fills, tints) only exist composited in the
     // framebuffer — live snapshot views lose them across windows and
     // drawViewHierarchyInRect never renders them. Grab the real screen with
-    // CCAster's edit chrome hidden for one committed frame, then crop modules.
+    // GoldenCC's edit chrome hidden for one committed frame, then crop modules.
     NSMutableArray<UIView *> *hiddenViews = [NSMutableArray array];
     NSMutableArray<NSDictionary *> *detachedBorders = [NSMutableArray array];
     void (^hideView)(UIView *) = ^(UIView *view) {
@@ -7099,7 +6792,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
                         [labelQueue addObjectsFromArray:candidate.subviews];
                     }
                     // Detached module previews often carry a native 1x2/2x1
-                    // material mask underneath CCAster's outer backing. Make
+                    // material mask underneath GoldenCC's outer backing. Make
                     // every full-size surface share one continuous radius so
                     // no second rounded layer peeks around the perimeter.
                     CCANormalizePreviewCornerRadii(moduleContent, container.bounds.size, radius);
@@ -7213,9 +6906,9 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     [gCCACustomSizes removeObjectForKey:identifier];
     gCCACustomOrigins[identifier] = @[@(destination.x), @(destination.y)];
     gCCAPendingPageAfterRebuild = destination.y / kCCAMinimumGridRows;
-    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-    CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
     NSMutableArray<NSString *> *updated = [enabled mutableCopy] ?: [NSMutableArray array];
     [updated addObject:identifier];
     [self saveEnabledModuleIdentifiers:updated];
@@ -7268,9 +6961,9 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         [gCCANativeLayoutRects removeObjectForKey:identifier];
         [gCCABaseLayoutSizes removeObjectForKey:identifier];
         CCASaveDuplicateFamilies();
-        CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-        CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kCCAPrefsDomain);
-        CFPreferencesAppSynchronize(kCCAPrefsDomain);
+        CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+        CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kGoldenCCPrefsDomain);
+        CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
         UIView *moduleView = objc_getAssociatedObject(sender, kCCARemoveModuleViewKey);
         UIViewController *module = CCAModuleControllerForView(moduleView);
         UIVisualEffectView *border = objc_getAssociatedObject(moduleView, @selector(applyEditingToModule:editing:));
@@ -7404,7 +7097,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (!filterClass || ![filterClass respondsToSelector:factory]) return nil;
     id filter = ((id (*)(id, SEL, id))objc_msgSend)(filterClass, factory, @"gaussianBlur");
     @try {
-        [filter setValue:@"CCAsterLabelBlur" forKey:@"name"];
+        [filter setValue:@"CCALabelBlur" forKey:@"name"];
         [filter setValue:@(radius) forKey:@"inputRadius"];
         [filter setValue:@YES forKey:@"inputNormalizeEdges"];
     } @catch (__unused NSException *exception) { return nil; }
@@ -7414,7 +7107,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 - (void)legacyTransitionResizedPresentation:(UIView *)presentation appearing:(BOOL)appearing completion:(void (^)(void))completion {
     if (!presentation) { if (completion) completion(); return; }
     objc_setAssociatedObject(presentation, kCCAResizePresentationTransitionKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [presentation.layer removeAnimationForKey:@"CCAsterLabelBlurRadius"];
+    [presentation.layer removeAnimationForKey:@"CCALabelBlurRadius"];
     CGFloat startRadius = appearing ? 7.0 : 0.0;
     CGFloat endRadius = appearing ? 0.0 : 7.0;
     id filter = [self labelBlurFilterWithRadius:startRadius];
@@ -7423,13 +7116,13 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     NSTimeInterval delay = appearing ? 0.12 : 0.0;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (filter) {
-            CABasicAnimation *blur = [CABasicAnimation animationWithKeyPath:@"filters.CCAsterLabelBlur.inputRadius"];
+            CABasicAnimation *blur = [CABasicAnimation animationWithKeyPath:@"filters.CCALabelBlur.inputRadius"];
             blur.fromValue = @(startRadius);
             blur.toValue = @(endRadius);
             blur.duration = 0.18;
             blur.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             @try { [filter setValue:@(endRadius) forKey:@"inputRadius"]; } @catch (__unused NSException *exception) {}
-            [presentation.layer addAnimation:blur forKey:@"CCAsterLabelBlurRadius"];
+            [presentation.layer addAnimation:blur forKey:@"CCALabelBlurRadius"];
         }
         [UIView animateWithDuration:0.18 delay:0.0 options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
             presentation.alpha = appearing ? 1.0 : 0.0;
@@ -7524,7 +7217,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 
     UIView *presentation = [buttonView viewWithTag:kCCAResizePresentationTag];
     if (CCAModuleLooksExpandedNow(module)) {
-        // The compact labels are CCAster-owned and must not be copied into the
+        // The compact labels are GoldenCC-owned and must not be copied into the
         // system detail platter. Keep the source view intact, but suppress its
         // adornment for the live expanded hierarchy.
         presentation.hidden = YES;
@@ -7738,7 +7431,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     [self applyResizedPresentationToModule:module];
     CCAConfigureOddResizedModuleLayout(module);
     // Connectivity's individual button controllers lay themselves out after
-    // their container. Re-apply the compact iOS 18 arrangement from CCAster's
+    // their container. Re-apply the compact iOS 18 arrangement from GoldenCC's
     // stable module refresh path as well as the controller hook below.
     UIViewController *connectivity = CCAConnectivityChild(module, @"CCUIConnectivityModuleViewController");
     if ([NSStringFromClass(module.class) isEqualToString:@"CCUIConnectivityModuleViewController"]) connectivity = module;
@@ -7900,8 +7593,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     NSUInteger pageStart = gCCACurrentPage * kCCAMinimumGridRows;
     gCCACustomOrigins[sourceID] = @[@(sourceRect.origin.x), @(pageStart + sourceRect.origin.y)];
     gCCACustomOrigins[targetID] = @[@(targetRect.origin.x), @(pageStart + targetRect.origin.y)];
-    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
     UIViewController *collection = [self moduleCollectionControllerInOverlay:overlay];
     [collection.view setNeedsLayout];
     [UIView animateWithDuration:0.22 animations:^{ [collection.view layoutIfNeeded]; }];
@@ -7946,8 +7639,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     }
     NSUInteger pageStart = page * kCCAMinimumGridRows;
     gCCACustomOrigins[sourceID] = @[@(destination.x), @(pageStart + destination.y)];
-    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
     UIViewController *collection = [self moduleCollectionControllerInOverlay:overlay];
     [collection.view setNeedsLayout];
     [UIView animateWithDuration:0.22 animations:^{ [collection.view layoutIfNeeded]; }];
@@ -8044,8 +7737,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             gCCACustomOrigins[identifier] = @[@(after.origin.x), @(pageStart + after.origin.y)];
         }
     }
-    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
     UIViewController *collection = [self moduleCollectionControllerInOverlay:overlay];
     [collection.view setNeedsLayout];
     [UIView animateWithDuration:0.22 animations:^{ [collection.view layoutIfNeeded]; }];
@@ -8190,9 +7883,9 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     }
     [gCCACustomOrigins addEntriesFromDictionary:overflowOrigins];
     gCCACustomSizes[sourceID] = @[@(newSize.width), @(newSize.height)];
-    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kCCAPrefsDomain);
-    CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kCCAPrefsDomain);
-    CFPreferencesAppSynchronize(kCCAPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridOrigins"), (__bridge CFPropertyListRef)[gCCACustomOrigins copy], kGoldenCCPrefsDomain);
+    CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kGoldenCCPrefsDomain);
+    CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
 
     UIViewController *matchingModule = nil;
     for (UIViewController *candidate in CCACollectModuleControllers(overlay)) if ([CCAModuleIdentifier(candidate) isEqualToString:sourceID]) { matchingModule = candidate; break; }
@@ -9116,11 +8809,11 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         }
         border.hidden = NO;
         border.alpha = 1.0;
-        if (gBorderBreathingEnabled && ![border.layer animationForKey:@"CCAsterBreathing"]) {
+        if (gBorderBreathingEnabled && ![border.layer animationForKey:@"CCABreathing"]) {
             CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"opacity"];
             animation.fromValue = @0.24; animation.toValue = @1.0; animation.duration = 0.7;
             animation.autoreverses = YES; animation.repeatCount = HUGE_VALF;
-            [border.layer addAnimation:animation forKey:@"CCAsterBreathing"];
+            [border.layer addAnimation:animation forKey:@"CCABreathing"];
         }
     } else if (border) { border.hidden = YES; [border.layer removeAllAnimations]; }
 
@@ -9156,7 +8849,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         if (!resize) {
             resize = [CCAExpandedHitButton buttonWithType:UIButtonTypeCustom];
             resize.tag = kCCAResizeButtonTag;
-            resize.accessibilityIdentifier = @"CCAsterResizeHandle";
+            resize.accessibilityIdentifier = @"CCAResizeHandle";
             resize.backgroundColor = UIColor.clearColor;
             resize.autoresizingMask = UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleLeftMargin;
             resize.clipsToBounds = NO;
@@ -9168,7 +8861,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             grabberMaterial.userInteractionEnabled = NO;
             [resize addSubview:grabberMaterial];
             CAShapeLayer *pill = [CAShapeLayer layer];
-            pill.name = @"CCAsterResizePill";
+            pill.name = @"CCAResizePill";
             pill.fillColor = UIColor.clearColor.CGColor;
             pill.strokeColor = [UIColor.whiteColor colorWithAlphaComponent:0.82].CGColor;
             pill.lineWidth = 12.5;
@@ -9215,8 +8908,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         materialMask.lineJoin = kCALineJoinRound;
         grabberMaterial.layer.mask = materialMask;
         for (CALayer *layer in [resize.layer.sublayers copy]) {
-            if ([layer.name isEqualToString:@"CCAsterResizeBacking"]) [layer removeFromSuperlayer];
-            else if ([layer.name isEqualToString:@"CCAsterResizePill"] && [layer isKindOfClass:[CAShapeLayer class]]) ((CAShapeLayer *)layer).path = cornerPath.CGPath;
+            if ([layer.name isEqualToString:@"CCAResizeBacking"]) [layer removeFromSuperlayer];
+            else if ([layer.name isEqualToString:@"CCAResizePill"] && [layer isKindOfClass:[CAShapeLayer class]]) ((CAShapeLayer *)layer).path = cornerPath.CGPath;
         }
         objc_setAssociatedObject(resize, kCCASmallModuleChromeKey,
             @(MIN(CGRectGetWidth(view.bounds), CGRectGetHeight(view.bounds)) < 100.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -9286,14 +8979,14 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     for (UIView *subview in view.subviews) [self collectEnabledNativeEditingGesturesFromView:subview into:gestures];
 }
 
-- (void)restoreCCAsterDisabledGesturesFromView:(UIView *)view {
+- (void)restoreGoldenCCDisabledGesturesFromView:(UIView *)view {
     for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
         if ([objc_getAssociatedObject(gesture, kCCADisabledGesturesKey) boolValue]) {
             gesture.enabled = YES;
             objc_setAssociatedObject(gesture, kCCADisabledGesturesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    for (UIView *subview in view.subviews) [self restoreCCAsterDisabledGesturesFromView:subview];
+    for (UIView *subview in view.subviews) [self restoreGoldenCCDisabledGesturesFromView:subview];
 }
 
 - (void)setNativeDismissTapGesturesEnabled:(BOOL)enabled forOverlay:(UIViewController *)overlay {
@@ -9308,7 +9001,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     } else {
         NSArray<UIGestureRecognizer *> *disabled = objc_getAssociatedObject(overlay, kCCADisabledGesturesKey);
         for (UIGestureRecognizer *gesture in disabled) gesture.enabled = YES;
-        [self restoreCCAsterDisabledGesturesFromView:overlay.view];
+        [self restoreGoldenCCDisabledGesturesFromView:overlay.view];
         objc_setAssociatedObject(overlay, kCCADisabledGesturesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
@@ -9773,7 +9466,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         UIVisualEffectView *border = objc_getAssociatedObject(module.view, @selector(applyEditingToModule:editing:));
         UIButton *remove = objc_getAssociatedObject(module.view, kCCARemoveButtonKey);
         UIButton *resize = objc_getAssociatedObject(module.view, kCCAResizeButtonKey);
-        if (clamped < 0.999) [border.layer removeAnimationForKey:@"CCAsterBreathing"];
+        if (clamped < 0.999) [border.layer removeAnimationForKey:@"CCABreathing"];
         border.alpha = clamped;
         remove.alpha = clamped;
         resize.alpha = clamped;
@@ -9815,12 +9508,6 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
                 [self setNativeDismissTapGesturesEnabled:YES forOverlay:overlay];
             }
         }
-            CCAResyncPersistentDuplicatesForAllOverlays();
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                          (int64_t)(0.38 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                CCAResyncPersistentDuplicatesForAllOverlays();
-            });
     });
 }
 
@@ -9846,8 +9533,6 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         [self updatePagedModuleVisibilityForOverlay:overlay showAdjacent:NO];
         [self setQuickAccessButtonsHidden:!gCCAControlCenterPresented forOverlay:overlay animated:NO];
     }
-
-    CCAResyncPersistentDuplicatesForAllOverlays();
 }
 
 @end
@@ -9920,7 +9605,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
             if (suggested.count >= 12) break;
             for (NSDictionary *entry in self.catalog) {
                 if (![[entry[@"identifier"] lowercaseString] containsString:needle]) continue;
-                CCUILayoutSize size = [[CCAsterCoordinator shared] catalogLayoutSizeForIdentifier:entry[@"identifier"]];
+                CCUILayoutSize size = [[CCACoordinator shared] catalogLayoutSizeForIdentifier:entry[@"identifier"]];
                 if (size.width != 1 || size.height != 1) continue;
                 if (![suggestedIdentifiers containsObject:entry[@"identifier"]]) {
                     [suggested addObject:entry];
@@ -9942,7 +9627,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
                     NSString *identifier = entry[@"identifier"];
                     if ([suggestedIdentifiers containsObject:identifier]) continue;
                     if (![(entry[@"category"] ?: @"Utilities") isEqualToString:category]) continue;
-                    CCUILayoutSize size = [[CCAsterCoordinator shared] catalogLayoutSizeForIdentifier:identifier];
+                    CCUILayoutSize size = [[CCACoordinator shared] catalogLayoutSizeForIdentifier:identifier];
                     if (size.width != 1 || size.height != 1) continue;
                     [suggested addObject:entry];
                     [suggestedIdentifiers addObject:identifier];
@@ -9977,7 +9662,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (identifier) [usedIdentifiers addObject:identifier];
     UIView *preview = firstUse ? self.previewCache[identifier] : nil;
     if (!preview) {
-        preview = [[CCAsterCoordinator shared] previewViewForCatalogEntry:entry];
+        preview = [[CCACoordinator shared] previewViewForCatalogEntry:entry];
         if (identifier && firstUse && preview) self.previewCache[identifier] = preview;
     }
     [preview removeFromSuperview];
@@ -10123,7 +9808,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (!identifier.length) return;
     [UIView animateWithDuration:0.10 animations:^{ gesture.view.transform = CGAffineTransformMakeScale(0.94, 0.94); } completion:^(__unused BOOL finished) {
         [UIView animateWithDuration:0.14 animations:^{ gesture.view.transform = CGAffineTransformIdentity; }];
-        [[CCAsterCoordinator shared] addControlSheetDidSelectIdentifier:identifier fromSheet:self];
+        [[CCACoordinator shared] addControlSheetDidSelectIdentifier:identifier fromSheet:self];
     }];
 }
 
@@ -10266,7 +9951,7 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     if (!gEnabled) return NO;
 
     // iOS 16 keeps the collection view's original six-row bounds even when
-    // CCAster's position provider lays modules into rows seven and eight.
+    // GoldenCC's position provider lays modules into rows seven and eight.
     // UIKit consequently rejects touches before they reach those visible
     // module wrappers. Extend hit testing to the actual laid-out descendants
     // without changing the collection frame or any grid geometry.
@@ -10338,17 +10023,17 @@ static void CCAAnimateDiscreteMediaLayout(UIView *view) {
         ((id (*)(id, SEL, id))objc_msgSend)(filterClass, factory, @"gaussianBlur") : nil;
     if (blur) {
         @try {
-            [blur setValue:@"CCAsterMediaLayoutBlur" forKey:@"name"];
+            [blur setValue:@"CCAMediaLayoutBlur" forKey:@"name"];
             [blur setValue:@6.0 forKey:@"inputRadius"];
             [blur setValue:@YES forKey:@"inputNormalizeEdges"];
             view.layer.filters = @[blur];
-            CABasicAnimation *blurAnimation = [CABasicAnimation animationWithKeyPath:@"filters.CCAsterMediaLayoutBlur.inputRadius"];
+            CABasicAnimation *blurAnimation = [CABasicAnimation animationWithKeyPath:@"filters.CCAMediaLayoutBlur.inputRadius"];
             blurAnimation.fromValue = @6.0;
             blurAnimation.toValue = @0.0;
             blurAnimation.duration = 0.20;
             blurAnimation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             [blur setValue:@0.0 forKey:@"inputRadius"];
-            [view.layer addAnimation:blurAnimation forKey:@"CCAsterMediaLayoutBlur"];
+            [view.layer addAnimation:blurAnimation forKey:@"CCAMediaLayoutBlur"];
         } @catch (__unused NSException *exception) { view.layer.filters = nil; }
     }
     view.layer.opacity = 1.0;
@@ -10357,9 +10042,9 @@ static void CCAAnimateDiscreteMediaLayout(UIView *view) {
     fade.toValue = @1.0;
     fade.duration = 0.20;
     fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [view.layer addAnimation:fade forKey:@"CCAsterMediaLayoutFade"];
+    [view.layer addAnimation:fade forKey:@"CCAMediaLayoutFade"];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.22 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (![view.layer animationForKey:@"CCAsterMediaLayoutBlur"]) view.layer.filters = nil;
+        if (![view.layer animationForKey:@"CCAMediaLayoutBlur"]) view.layer.filters = nil;
     });
 }
 
@@ -10395,7 +10080,7 @@ static BOOL CCAMediaViewInsideControlCenterTile(UIView *view) {
     // system; other modules expanding must not eject the tile from its custom
     // layout (that left it mangled in native form behind the platter). The
     // container's stuck-prone `_expanded` flag is consulted only inside
-    // CCAster's own expansion window.
+    // GoldenCC's own expansion window.
     if (gCCAExpandedModuleOpen) {
         BOOL mediaExpanding = [gCCAExpandedModuleIdentifier isEqualToString:@"com.apple.mediaremote.controlcenter.nowplaying"];
         if (!mediaExpanding && !gCCAExpandedModuleIdentifier.length) {
@@ -10422,7 +10107,7 @@ static NSString *CCAMediaModeForNowPlayingView(UIView *npView) {
     return columns < 4 ? @"compact" : [NSString stringWithFormat:@"wide%lu", (unsigned long)rows];
 }
 
-// Mode for any descendant of the now playing view; nil when CCAster should
+// Mode for any descendant of the now playing view; nil when GoldenCC should
 // leave the native layout alone entirely.
 static NSString *CCAActiveMediaMode(UIView *descendant) {
     UIView *npView = CCAMediaAncestorOfClass(descendant, @"MRUNowPlayingView");
@@ -10446,7 +10131,7 @@ static void CCAAdjustMediaLabelFonts(UIView *view, BOOL isTitle) {
 }
 
 // The system dims/hides pieces of the compact label stack for its own layout;
-// force children visible whenever CCAster owns the geometry.
+// force children visible whenever GoldenCC owns the geometry.
 static void CCAForceMediaSubviewAlphas(UIView *view) {
     for (UIView *subview in view.subviews) {
         if (!subview.hidden) subview.layer.opacity = 1.0;
@@ -10462,7 +10147,7 @@ static void CCAForceMediaSubviewAlphas(UIView *view) {
 static void CCAConfigureNowPlayingLayout(UIView *nowPlayingView) {
     if (!nowPlayingView) return;
     if (!CCAMediaViewInsideControlCenterTile(nowPlayingView)) {
-        // Leaving CCAster's tile modes (expansion, platter handoff): drop the
+        // Leaving GoldenCC's tile modes (expansion, platter handoff): drop the
         // stored mode and give the wrapper its corner chrome back so the
         // native expanded layout isn't missing pieces.
         if (objc_getAssociatedObject(nowPlayingView, kCCANowPlayingLayoutModeKey)) {
@@ -10531,7 +10216,7 @@ static void CCAConfigureNowPlayingLayout(UIView *nowPlayingView) {
         nowPlayingView.clipsToBounds = YES;
         header.frame = nowPlayingView.bounds;
         // The MRUControlCenterView wrapper draws its own corner routing
-        // indicator and "more" button; CCAster's header routing button is the
+        // indicator and "more" button; GoldenCC's header routing button is the
         // sole routing control in every custom layout.
         UIView *wrapper = CCAMediaAncestorOfClass(nowPlayingView, @"MRUControlCenterView");
         UIView *cornerRouting = CCAIvarView(wrapper, "_routingButton");
@@ -10832,7 +10517,7 @@ static UIButton *CCAConnectivitySnapshotProxy(UIView *root, NSInteger tag, CGRec
         proxy = [UIButton buttonWithType:UIButtonTypeCustom];
         proxy.tag = tag;
         proxy.imageView.contentMode = UIViewContentModeScaleAspectFit;
-        [proxy addTarget:[CCAsterCoordinator shared] action:@selector(connectivityProxyTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [proxy addTarget:[CCACoordinator shared] action:@selector(connectivityProxyTapped:) forControlEvents:UIControlEventTouchUpInside];
         [root addSubview:proxy];
     }
     UIView *roundButton = CCAFindSubviewWithClassName(child.view, @"CCUIRoundButton");
@@ -11183,7 +10868,7 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
                     vpnMaterial.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
                     vpnMaterial.userInteractionEnabled = NO;
                     [vpn addSubview:vpnMaterial];
-                    [vpn addTarget:[CCAsterCoordinator shared] action:@selector(openVPNSettings:) forControlEvents:UIControlEventTouchUpInside];
+                    [vpn addTarget:[CCACoordinator shared] action:@selector(openVPNSettings:) forControlEvents:UIControlEventTouchUpInside];
                     UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightMedium];
                     UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"network" withConfiguration:configuration]];
                     icon.tag = 1; icon.tintColor = [UIColor.whiteColor colorWithAlphaComponent:0.45]; icon.contentMode = UIViewContentModeCenter;
@@ -11302,7 +10987,7 @@ static void CCAConfigureConnectivityLayout(UIViewController *controller) {
         expand.accessibilityLabel = @"More Connectivity Controls";
         expand.accessibilityHint = @"Opens all connectivity controls";
         expand.isAccessibilityElement = YES;
-        [expand addTarget:[CCAsterCoordinator shared] action:@selector(expandConnectivityFromMiniCluster:) forControlEvents:UIControlEventTouchUpInside];
+        [expand addTarget:[CCACoordinator shared] action:@selector(expandConnectivityFromMiniCluster:) forControlEvents:UIControlEventTouchUpInside];
         [root addSubview:expand];
     }
     expand.hidden = gEditModeActive;
@@ -11529,7 +11214,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     if (![objc_getAssociatedObject(self, kCCAMediaRouteGlyphShrinkKey) boolValue]) return;
     UIView *view = (UIView *)(id)self;
     if (!CCAActiveMediaMode(view)) return;
-    // CCAster's circled routing button: pull the glyph in so it doesn't crowd
+    // GoldenCC's circled routing button: pull the glyph in so it doesn't crowd
     // the circle. Runs after the button's own image layout, so it sticks.
     [UIView performWithoutAnimation:^{
         for (UIView *child in view.subviews) {
@@ -11560,7 +11245,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     CGFloat W = CGRectGetWidth(view.bounds);
     CGFloat centerY = CGRectGetHeight(view.bounds) / 2.0;
     [UIView performWithoutAnimation:^{
-        // The header's routing button is the one CCAster styles and places;
+        // The header's routing button is the one GoldenCC styles and places;
         // the transport strip's trailing duplicate stays hidden. Same for the
         // leading (TV remote style) button.
         if (stripRouting) { stripRouting.hidden = YES; stripRouting.alpha = 0.0; }
@@ -11939,7 +11624,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         responder = responder.nextResponder;
     }
     if (module) {
-        dispatch_async(dispatch_get_main_queue(), ^{ [[CCAsterCoordinator shared] applyResizedPresentationToModule:module]; });
+        dispatch_async(dispatch_get_main_queue(), ^{ [[CCACoordinator shared] applyResizedPresentationToModule:module]; });
     }
 }
 
@@ -11957,7 +11642,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         }
         responder = responder.nextResponder;
     }
-    if (module) [[CCAsterCoordinator shared] applyResizedPresentationToModule:module];
+    if (module) [[CCACoordinator shared] applyResizedPresentationToModule:module];
 }
 
 %end
@@ -11966,7 +11651,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    if (gEnabled && CCAIsOverlayController(self)) [[CCAsterCoordinator shared] installOnOverlay:self];
+    if (gEnabled && CCAIsOverlayController(self)) [[CCACoordinator shared] installOnOverlay:self];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -11975,7 +11660,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         // Provider-driven rebuilds replace the header pocket at unpredictable
         // times; the overlay always lays out afterwards, so this is the one
         // reliable spot to put the quick-access host back.
-        CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+        CCACoordinator *coordinator = [CCACoordinator shared];
         [coordinator installQuickAccessHostOnOverlay:self];
         BOOL hasPageIndicators = [self.view viewWithTag:kCCAPageIndicatorHostTag] != nil;
         BOOL hasPager = NO;
@@ -12016,10 +11701,10 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     if (gEnabled && CCAIsOverlayController(self) && !gEditModeActive &&
         ((settledControlCenterState && !presentationLayerSettling) ||
          CCAInteractivePagingGeometryActive())) {
-        [[CCAsterCoordinator shared] applyRestingModuleOffsetToOverlay:self];
+        [[CCACoordinator shared] applyRestingModuleOffsetToOverlay:self];
     }
     if (CCAIsModuleController(self) && !CCAIsOwnedDuplicateModuleController(self)) {
-        CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+        CCACoordinator *coordinator = [CCACoordinator shared];
         [coordinator applyRefinedLookToModule:self];
         if (!gCCAExpandedModuleOpen) [coordinator applyTransitionRadiusToModule:self];
         if (gEditModeActive) {
@@ -12047,12 +11732,12 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     %orig;
     if (CCAIsOverlayController(self)) {
         if (gEditModeActive) {
-            [[CCAsterCoordinator shared] dismissEditingImmediately];
+            [[CCACoordinator shared] dismissEditingImmediately];
         } else if (gEnabled) {
             // Insurance: if a raced exit left edit presentation half-applied
             // (offset wrappers, borders, grids), scrub it while CC is away so
             // the next open and module expansions start from clean geometry.
-            [[CCAsterCoordinator shared] setEditPresentation:NO forOverlay:self animated:NO];
+            [[CCACoordinator shared] setEditPresentation:NO forOverlay:self animated:NO];
         }
     }
 }
@@ -12098,7 +11783,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         if (gEditModeActive) {
             CCAHaptic();
             gCCAEditExitConsumedUntil = CACurrentMediaTime() + 0.9;
-            [[CCAsterCoordinator shared] dismissEditingImmediately];
+            [[CCACoordinator shared] dismissEditingImmediately];
             return YES;
         }
         if (CACurrentMediaTime() < gCCAEditExitConsumedUntil) return YES;
@@ -12114,7 +11799,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
             // Atomic, non-animated exit: the in-flight home gesture keeps
             // driving presentation callbacks that would strand an animated
             // exit halfway (stuck edit chrome, later expansion glitches).
-            [[CCAsterCoordinator shared] dismissEditingImmediately];
+            [[CCACoordinator shared] dismissEditingImmediately];
             return;
         }
         if (CACurrentMediaTime() < gCCAEditExitConsumedUntil) return;
@@ -12122,8 +11807,8 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     UIViewController *overlay = gOverlayControllers.allObjects.firstObject;
     if (gEnabled && overlay && !gCCAExpandedModuleOpen) {
         gCCAOwnedDuplicateHostSyncPresented = NO;
-        [[CCAsterCoordinator shared] beginOwnedDuplicateHostPresentationSync];
-        [[CCAsterCoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:NO];
+        [[CCACoordinator shared] beginOwnedDuplicateHostPresentationSync];
+        [[CCACoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:NO];
     }
     %orig;
 }
@@ -12148,12 +11833,12 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     } @catch (__unused NSException *exception) {}
     if (!overlay) overlay = gOverlayControllers.allObjects.firstObject;
     if (overlay && CCAInteractivePagingGeometryActive()) {
-        [[CCAsterCoordinator shared] applyPageTransformToOverlay:overlay animated:NO];
+        [[CCACoordinator shared] applyPageTransformToOverlay:overlay animated:NO];
     }
     if (gPagingEnabled) {
-        [[CCAsterCoordinator shared] trackControlCenterPresentationGesture:(UIPanGestureRecognizer *)gesture overlay:overlay controller:self];
+        [[CCACoordinator shared] trackControlCenterPresentationGesture:(UIPanGestureRecognizer *)gesture overlay:overlay controller:self];
     }
-    [[CCAsterCoordinator shared] beginOwnedDuplicateHostPresentationSync];
+    [[CCACoordinator shared] beginOwnedDuplicateHostPresentationSync];
 }
 
 - (void)controlCenterViewController:(id)controller significantPresentationProgressChange:(double)progress {
@@ -12162,26 +11847,26 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     UIViewController *overlay = [controller isKindOfClass:[UIViewController class]] ? (UIViewController *)controller : gOverlayControllers.allObjects.firstObject;
     CGFloat clamped = MIN(1.0, MAX(0.0, (CGFloat)progress));
     if (overlay && CCAInteractivePagingGeometryActive()) {
-        [[CCAsterCoordinator shared] applyPageTransformToOverlay:overlay animated:NO];
+        [[CCACoordinator shared] applyPageTransformToOverlay:overlay animated:NO];
     }
     // A presentation dip mid-drag is a second-finger page (or an incidental
     // native callback), not an intent to leave edit mode with a module in hand.
     if (gEnabled && gEditModeActive && !gCCAExpandedModuleOpen && !gCCADragInProgress && clamped < 0.985) {
         CCAHaptic();
         gCCAEditExitConsumedUntil = CACurrentMediaTime() + 1.1;
-        [[CCAsterCoordinator shared] dismissEditingImmediately];
+        [[CCACoordinator shared] dismissEditingImmediately];
         return;
     }
     if (gEditModeActive && !gCCAAddSheetPresentationActive && ![overlay.presentedViewController isKindOfClass:[CCAAddControlSheetViewController class]]) {
-        [[CCAsterCoordinator shared] updateEditingChromeForPresentationProgress:clamped overlay:overlay];
+        [[CCACoordinator shared] updateEditingChromeForPresentationProgress:clamped overlay:overlay];
     }
-    [[CCAsterCoordinator shared] updateTopFadeForOverlay:overlay presentationAlpha:clamped];
+    [[CCACoordinator shared] updateTopFadeForOverlay:overlay presentationAlpha:clamped];
     if (clamped > 0.001 && clamped < 0.999) {
-        [[CCAsterCoordinator shared] updateOwnedDuplicateHostForOverlay:overlay presentationAlpha:clamped];
+        [[CCACoordinator shared] updateOwnedDuplicateHostForOverlay:overlay presentationAlpha:clamped];
     } else {
-        [[CCAsterCoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:clamped >= 0.999];
+        [[CCACoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:clamped >= 0.999];
     }
-    [[CCAsterCoordinator shared] beginOwnedDuplicateHostPresentationSync];
+    [[CCACoordinator shared] beginOwnedDuplicateHostPresentationSync];
     UIView *host = [overlay.view viewWithTag:181000];
     UIView *pageIndicators = [overlay.view viewWithTag:kCCAPageIndicatorHostTag];
     if (gPagingEnabled && pageIndicators && !gCCAExpandedModuleOpen && gCCAPageCount > 1) {
@@ -12209,7 +11894,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         if (state == 3 && gEditModeActive && !gCCADragInProgress) {
             CCAHaptic();
             gCCAEditExitConsumedUntil = CACurrentMediaTime() + 1.2;
-            [[CCAsterCoordinator shared] dismissEditingImmediately];
+            [[CCACoordinator shared] dismissEditingImmediately];
             gCCAControlCenterPresented = YES;
             return;
         }
@@ -12225,11 +11910,11 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     } @catch (NSException *presentationException) {
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *recoveryOverlay = gOverlayControllers.allObjects.firstObject;
-            if (recoveryOverlay) [[CCAsterCoordinator shared] normalizePagedLayoutForOverlay:recoveryOverlay];
+            if (recoveryOverlay) [[CCACoordinator shared] normalizePagedLayoutForOverlay:recoveryOverlay];
         });
     }
     gCCAControlCenterPresented = state != 0;
-    [[CCAsterCoordinator shared] beginOwnedDuplicateHostPresentationSync];
+    [[CCACoordinator shared] beginOwnedDuplicateHostPresentationSync];
 
     if (state == 0) {
         gCCAAddSheetPresentationActive = NO;
@@ -12252,7 +11937,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     if (overlay) {
         if (state != 0) {
             if (gPagingEnabled && !gCCAPresentationPanGesture) {
-                [[CCAsterCoordinator shared] beginPresentationPanDiscoveryForOverlay:overlay controller:self];
+                [[CCACoordinator shared] beginPresentationPanDiscoveryForOverlay:overlay controller:self];
             }
             UIPanGestureRecognizer *presentationPan = gCCAPresentationPanGesture;
             BOOL livePresentationPull = presentationPan && presentationPan.numberOfTouches > 0 &&
@@ -12290,7 +11975,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
                     if (gCCAControlCenterPresentationState != 0) return;
                     UIViewController *settledOverlay = weakOverlay;
                     if (settledOverlay) {
-                        [[CCAsterCoordinator shared] setCurrentPage:0
+                        [[CCACoordinator shared] setCurrentPage:0
                                                          forOverlay:settledOverlay
                                                            animated:NO];
                     }
@@ -12300,25 +11985,25 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         UIView *hitBridge = [overlay.view viewWithTag:kCCAExtendedHitBridgeTag];
         if (state != 0 && hitBridge) [overlay.view bringSubviewToFront:hitBridge];
         BOOL hideQuickAccess = state == 0 || gCCAExpandedModuleOpen || gEditModeActive;
-        [[CCAsterCoordinator shared] setQuickAccessButtonsHidden:hideQuickAccess forOverlay:overlay animated:state != 0];
-        [[CCAsterCoordinator shared] updateTopFadeForOverlay:overlay presentationAlpha:state == 0 ? 0.0 : 1.0];
-        [[CCAsterCoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:state != 0];
+        [[CCACoordinator shared] setQuickAccessButtonsHidden:hideQuickAccess forOverlay:overlay animated:state != 0];
+        [[CCACoordinator shared] updateTopFadeForOverlay:overlay presentationAlpha:state == 0 ? 0.0 : 1.0];
+        [[CCACoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:state != 0];
         if (state != 0 && !gCCAExpandedModuleOpen) {
             // The source presentation layers already exist when this callback
             // returns. Copy them now so the first committed duplicate frame
             // cannot flash at its resting transform before the display link
             // begins following the native animation.
-            [[CCAsterCoordinator shared] layoutOwnedDuplicateModulesForOverlay:overlay];
-            [[CCAsterCoordinator shared] updateOwnedDuplicateHostForOverlay:overlay presentationAlpha:1.0];
+            [[CCACoordinator shared] layoutOwnedDuplicateModulesForOverlay:overlay];
+            [[CCACoordinator shared] updateOwnedDuplicateHostForOverlay:overlay presentationAlpha:1.0];
         }
         if (gEditModeActive) {
             CGFloat chromeProgress = state == 0 ? 0.0 : 1.0;
             if (state == 0) {
                 [UIView animateWithDuration:0.16 delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-                    [[CCAsterCoordinator shared] updateEditingChromeForPresentationProgress:chromeProgress overlay:overlay];
+                    [[CCACoordinator shared] updateEditingChromeForPresentationProgress:chromeProgress overlay:overlay];
                 } completion:nil];
             } else {
-                [[CCAsterCoordinator shared] updateEditingChromeForPresentationProgress:chromeProgress overlay:overlay];
+                [[CCACoordinator shared] updateEditingChromeForPresentationProgress:chromeProgress overlay:overlay];
             }
         }
         UIView *pageIndicators = [overlay.view viewWithTag:kCCAPageIndicatorHostTag];
@@ -12339,7 +12024,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
                     gCCAControlCenterPresentationState != state) return;
                 UIViewController *settledOverlay = weakOverlay;
                 if (settledOverlay) {
-                    [[CCAsterCoordinator shared] updatePageIndicatorsForOverlay:settledOverlay];
+                    [[CCACoordinator shared] updatePageIndicatorsForOverlay:settledOverlay];
                 }
             });
             if (state == 2) {
@@ -12354,7 +12039,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
         }
         if (state != 0 && gEditModeActive) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [[CCAsterCoordinator shared] updateEditControlFramesForOverlay:overlay];
+                [[CCACoordinator shared] updateEditControlFramesForOverlay:overlay];
             });
         }
     }
@@ -12363,7 +12048,7 @@ static void CCAConfigureExpandedConnectivityChild(UIViewController *child) {
     // callbacks are not reliable enough to remove overlay-hosted edit chrome.
     if (state == 0 && gEditModeActive) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (gEditModeActive) [[CCAsterCoordinator shared] dismissEditingImmediately];
+            if (gEditModeActive) [[CCACoordinator shared] dismissEditingImmediately];
         });
     }
     if (state == 0) {
@@ -13223,8 +12908,8 @@ static void CCAApplyExpandedPlatterRadius(UIPresentationController *presentation
     }
     CGFloat radius = 0.0;
     if (gEnabled && anchor.view) {
-        radius = [[CCAsterCoordinator shared] refinedCornerRadiusForSize:anchor.view.bounds.size];
-        [[CCAsterCoordinator shared] applyTransitionRadiusToModule:anchor];
+        radius = [[CCACoordinator shared] refinedCornerRadiusForSize:anchor.view.bounds.size];
+        [[CCACoordinator shared] applyTransitionRadiusToModule:anchor];
     }
     if (radius <= 1.0) radius = anchor.view.layer.cornerRadius;
     for (UIView *view = anchor.view.superview; radius <= 1.0 && view; view = view.superview) radius = view.layer.cornerRadius;
@@ -13622,7 +13307,7 @@ static void CCAAttachCompactMediaSnapshotToNativeTransition(void) {
     }];
 }
 
-static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObject, BOOL applyCCAsterLayout) {
+static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObject, BOOL applyGoldenCCLayout) {
     UIViewController *module = CCACompactMediaModuleForSource(overlay, sourceObject);
     if (!module) return;
 
@@ -13664,7 +13349,7 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
         }
         [nowPlayingView setNeedsLayout];
         [nowPlayingView layoutIfNeeded];
-        if (!applyCCAsterLayout) {
+        if (!applyGoldenCCLayout) {
             return;
         }
         objc_setAssociatedObject(nowPlayingView, kCCANowPlayingLayoutModeKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
@@ -13672,7 +13357,7 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
         [nowPlayingView layoutIfNeeded];
         CCAConfigureNowPlayingLayout(nowPlayingView);
     }
-    if (applyCCAsterLayout) {
+    if (applyGoldenCCLayout) {
         UIView *snapshot = gCCAMediaCompactTransitionSnapshot.superview ?
             gCCAMediaCompactTransitionSnapshot : nil;
         CCAStopConnectivitySubviewAnimations(module.view, YES);
@@ -13774,7 +13459,7 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
         if ([module isKindOfClass:[UIViewController class]]) ((UIViewController *)module).preferredContentSize = preferredSize;
 
     }
-    CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+    CCACoordinator *coordinator = [CCACoordinator shared];
     [coordinator hideOwnedChromeForExpandedPlatterInOverlay:overlay];
     if (gEditModeActive) [coordinator dismissEditingImmediately];
     if (expandedController) [coordinator applyResizedPresentationToModule:expandedController];
@@ -13841,7 +13526,7 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
     gCCAConnectivityExpansionActive = NO;
     gCCAExpandedModuleIdentifier = nil;
     if (closingConnectivity) CCAFinishConnectivityClosingTransition(closingConnectivity);
-    CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+    CCACoordinator *coordinator = [CCACoordinator shared];
     UIView *pageIndicators = [overlay.view viewWithTag:kCCAPageIndicatorHostTag];
     if (pageIndicators) {
         objc_setAssociatedObject(pageIndicators, kCCAPageIndicatorDraggingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -13891,20 +13576,20 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
     if (overlay) CCAApplyExpansionPageGeometrySync(overlay);
     gCCAExpandedModuleClosingActive = YES;
     if (overlay && !gCCAControlCenterPresented) {
-        [[CCAsterCoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:NO];
+        [[CCACoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:NO];
     } else if (overlay) {
-        [[CCAsterCoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:YES];
+        [[CCACoordinator shared] animateOwnedDuplicateHostForOverlay:overlay presented:YES];
     }
     for (UIViewController *candidate in CCACollectModuleControllers(overlay)) {
-        [[CCAsterCoordinator shared] applyRefinedLookToModule:candidate];
-        [[CCAsterCoordinator shared] applyTransitionRadiusToModule:candidate];
+        [[CCACoordinator shared] applyRefinedLookToModule:candidate];
+        [[CCACoordinator shared] applyTransitionRadiusToModule:candidate];
     }
-    if (expandedController) [[CCAsterCoordinator shared] applyTransitionRadiusToModule:expandedController];
-    if (containerController) [[CCAsterCoordinator shared] applyTransitionRadiusToModule:containerController];
-    if (expandedController) [[CCAsterCoordinator shared] applyClosingCompactRadiusToModule:expandedController overlay:overlay sourceObject:module];
-    if (containerController) [[CCAsterCoordinator shared] applyClosingCompactRadiusToModule:containerController overlay:overlay sourceObject:module];
-    if (overlay) [[CCAsterCoordinator shared] setQuickAccessButtonsHidden:YES forOverlay:overlay animated:YES];
-    if (overlay) [[CCAsterCoordinator shared] updatePageIndicatorsForOverlay:overlay];
+    if (expandedController) [[CCACoordinator shared] applyTransitionRadiusToModule:expandedController];
+    if (containerController) [[CCACoordinator shared] applyTransitionRadiusToModule:containerController];
+    if (expandedController) [[CCACoordinator shared] applyClosingCompactRadiusToModule:expandedController overlay:overlay sourceObject:module];
+    if (containerController) [[CCACoordinator shared] applyClosingCompactRadiusToModule:containerController overlay:overlay sourceObject:module];
+    if (overlay) [[CCACoordinator shared] setQuickAccessButtonsHidden:YES forOverlay:overlay animated:YES];
+    if (overlay) [[CCACoordinator shared] updatePageIndicatorsForOverlay:overlay];
     BOOL closingMedia = [NSStringFromClass([module class]) isEqualToString:@"MediaControlsModule"] ||
         [[CCAIdentifierFromObject(module) copy] isEqualToString:@"com.apple.mediaremote.controlcenter.nowplaying"];
     if (closingMedia && overlay) {
@@ -13920,7 +13605,7 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
     if (closingMedia && overlay) {
         CCAFadeExpandedMediaDismissalSnapshot();
     }
-    CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+    CCACoordinator *coordinator = [CCACoordinator shared];
     NSString *closingIdentifier = [CCAModuleIdentifier(expandedController) copy] ?: [CCAIdentifierFromObject(module) copy];
     for (NSNumber *delay in @[@0.0, @0.04, @0.08, @0.14, @0.22, @0.34, @0.5, @0.7]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -13945,118 +13630,10 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
 
 %end
 
-
-%hook CCUIModuleCollectionViewController
-
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    if (!gEnabled || !gCCADuplicateFamilies.count) return;
-    UIViewController *overlay = ((UIViewController *)(id)self).parentViewController;
-    while (overlay && !CCAIsOverlayController(overlay)) overlay = overlay.parentViewController;
-    if (!overlay) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!gEnabled || !gCCADuplicateFamilies.count) return;
-        CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
-        [coordinator syncOwnedDuplicateModulesForOverlay:overlay];
-        [coordinator layoutOwnedDuplicateModulesForOverlay:overlay];
-        UIView *host = [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
-        if (host) {
-            host.hidden = NO;
-            host.alpha = 1.0;
-            host.layer.opacity = 1.0;
-            host.userInteractionEnabled = YES;
-            [overlay.view bringSubviewToFront:host];
-        }
-    });
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!gEnabled || !gCCADuplicateFamilies.count || gCCAExpandedModuleOpen) return;
-    UIViewController *overlay = ((UIViewController *)(id)self).parentViewController;
-    while (overlay && !CCAIsOverlayController(overlay)) overlay = overlay.parentViewController;
-    if (!overlay) return;
-    CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
-    [coordinator syncOwnedDuplicateModulesForOverlay:overlay];
-    [coordinator layoutOwnedDuplicateModulesForOverlay:overlay];
-    UIView *host = [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
-    if (host && !gCCAExpandedModuleOpen) {
-        host.hidden = NO;
-        host.alpha = 1.0;
-        host.layer.opacity = 1.0;
-        host.userInteractionEnabled = YES;
-        [overlay.view bringSubviewToFront:host];
-    }
-}
-
-%end
-
-static void CCAResyncPersistentDuplicatesForAllOverlays(void) {
-    if (!gEnabled || !gCCADuplicateFamilies.count) return;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        CCAsterCoordinator *coordinator =
-            [CCAsterCoordinator shared];
-
-        for (UIViewController *overlay
-             in gOverlayControllers.allObjects) {
-
-            if (!overlay.view) continue;
-
-            [coordinator syncOwnedDuplicateModulesForOverlay:overlay];
-            [coordinator layoutOwnedDuplicateModulesForOverlay:overlay];
-
-            UIView *host =
-                [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
-
-            if (host) {
-                host.hidden = NO;
-                host.alpha = 1.0;
-                host.layer.opacity = 1.0;
-
-                [overlay.view bringSubviewToFront:host];
-            }
-        }
-
-        dispatch_after(
-            dispatch_time(DISPATCH_TIME_NOW,
-                          (int64_t)(0.22 * NSEC_PER_SEC)),
-            dispatch_get_main_queue(),
-            ^{
-                if (!gEnabled || !gCCADuplicateFamilies.count)
-                    return;
-
-                CCAsterCoordinator *coordinator2 =
-                    [CCAsterCoordinator shared];
-
-                for (UIViewController *overlay
-                     in gOverlayControllers.allObjects) {
-
-                    if (!overlay.view) continue;
-
-                    [coordinator2 syncOwnedDuplicateModulesForOverlay:overlay];
-                    [coordinator2 layoutOwnedDuplicateModulesForOverlay:overlay];
-
-                    UIView *host =
-                        [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
-
-                    if (host) {
-                        host.hidden = NO;
-                        host.alpha = 1.0;
-                        host.layer.opacity = 1.0;
-
-                        [overlay.view bringSubviewToFront:host];
-                    }
-                }
-            }
-        );
-    });
-}
-
 static void CCAPrefsChanged(__unused CFNotificationCenterRef center, __unused void *observer, __unused CFStringRef name, __unused const void *object, __unused CFDictionaryRef userInfo) {
     CCALoadPrefs();
     dispatch_async(dispatch_get_main_queue(), ^{
-        CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+        CCACoordinator *coordinator = [CCACoordinator shared];
         [coordinator setEditing:NO];
         for (UIViewController *overlay in gOverlayControllers.allObjects) {
             [coordinator installQuickAccessHostOnOverlay:overlay];
@@ -14066,14 +13643,12 @@ static void CCAPrefsChanged(__unused CFNotificationCenterRef center, __unused vo
             for (UIViewController *module in CCACollectModuleControllers(overlay)) [coordinator applyRefinedLookToModule:module];
         }
     });
-    CCAResyncPersistentDuplicatesForAllOverlays();
-
 }
 
 %ctor {
     @autoreleasepool {
         CCALoadPrefs();
-        // Master switch — the definitive, future-proof disable. With CCAster
+        // Master switch — the definitive, future-proof disable. With GoldenCC
         // off we install no hooks, register no observers, and allocate nothing,
         // so SpringBoard behaves exactly as if the tweak were not present. Every
         // current and future feature is covered automatically because nothing
@@ -14085,23 +13660,23 @@ static void CCAPrefsChanged(__unused CFNotificationCenterRef center, __unused vo
         gCCANativeLayoutRects = [NSMutableDictionary dictionary];
         gCCABaseLayoutSizes = [NSMutableDictionary dictionary];
         gCCAConnectivityOptimisticStates = [NSMutableDictionary dictionary];
-        CFPropertyListRef savedOrigins = CFPreferencesCopyAppValue(CFSTR("ModuleGridOrigins"), kCCAPrefsDomain);
+        CFPropertyListRef savedOrigins = CFPreferencesCopyAppValue(CFSTR("ModuleGridOrigins"), kGoldenCCPrefsDomain);
         gCCACustomOrigins = [(__bridge NSDictionary *)savedOrigins mutableCopy] ?: [NSMutableDictionary dictionary];
         if (savedOrigins) CFRelease(savedOrigins);
-        CFPropertyListRef savedSizes = CFPreferencesCopyAppValue(CFSTR("ModuleGridSizes"), kCCAPrefsDomain);
+        CFPropertyListRef savedSizes = CFPreferencesCopyAppValue(CFSTR("ModuleGridSizes"), kGoldenCCPrefsDomain);
         gCCACustomSizes = [(__bridge NSDictionary *)savedSizes mutableCopy] ?: [NSMutableDictionary dictionary];
         if (savedSizes) CFRelease(savedSizes);
-        CFPropertyListRef savedDuplicates = CFPreferencesCopyAppValue(CFSTR("COSMICDuplicateFamilies"), kCCAPrefsDomain);
+        CFPropertyListRef savedDuplicates = CFPreferencesCopyAppValue(CFSTR("COSMICDuplicateFamilies"), kGoldenCCPrefsDomain);
         gCCADuplicateFamilies = [(__bridge NSDictionary *)savedDuplicates mutableCopy] ?: [NSMutableDictionary dictionary];
         if (savedDuplicates) CFRelease(savedDuplicates);
         // Connectivity is fixed at Apple's native 2x2 size. Remove builds'
         // stale 4x2 override without disturbing the user's chosen grid origin.
         if (gCCACustomSizes[@"com.apple.control-center.ConnectivityModule"]) {
             [gCCACustomSizes removeObjectForKey:@"com.apple.control-center.ConnectivityModule"];
-            CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kCCAPrefsDomain);
-            CFPreferencesAppSynchronize(kCCAPrefsDomain);
+            CFPreferencesSetAppValue(CFSTR("ModuleGridSizes"), (__bridge CFPropertyListRef)[gCCACustomSizes copy], kGoldenCCPrefsDomain);
+            CFPreferencesAppSynchronize(kGoldenCCPrefsDomain);
         }
-        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, CCAPrefsChanged, (__bridge CFStringRef)kCCAReloadNotification, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, CCAPrefsChanged, (__bridge CFStringRef)kGoldenCCReloadNotification, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         Class overlayClass = NSClassFromString(@"CCUIModularControlCenterOverlayViewController");
         SEL willOpen = NSSelectorFromString(@"moduleCollectionViewController:willOpenExpandedModule:");
         SEL didClose = NSSelectorFromString(@"moduleCollectionViewController:didCloseExpandedModule:");

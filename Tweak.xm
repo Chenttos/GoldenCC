@@ -1310,6 +1310,30 @@ static NSBundle *CCABundleForDuplicateModuleIdentifier(NSString *identifier) {
     return nil;
 }
 
+static id CCANativeModuleInstanceManager(void) {
+    Class managerClass = NSClassFromString(@"CCUIModuleInstanceManager");
+    if (!managerClass) return nil;
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (![managerClass respondsToSelector:shared]) return nil;
+    @try {
+        return ((id (*)(id, SEL))objc_msgSend)(managerClass, shared);
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+}
+
+static void CCAConfigureDuplicateContextForNativeManager(id context) {
+    if (!context) return;
+    id manager = CCANativeModuleInstanceManager();
+    if (!manager) return;
+    SEL setDelegate = NSSelectorFromString(@"setDelegate:");
+    if ([context respondsToSelector:setDelegate]) {
+        @try {
+            ((void (*)(id, SEL, id))objc_msgSend)(context, setDelegate, manager);
+        } @catch (__unused NSException *exception) {}
+    }
+}
+
 static id CCAInstantiateDuplicateContentModule(NSString *identifier,
                                                NSString *baseIdentifier,
                                                id *outContext) {
@@ -1459,6 +1483,12 @@ static id CCAInstantiateDuplicateContentModule(NSString *identifier,
     self.contentModule = module;
     self.contentModuleContext = context;
 
+    // Use the real Control Center module-instance manager as the context
+    // delegate. This is what makes actions, expansion requests, toggles and
+    // other CCUIContentModule callbacks behave like a native module instead
+    // of a passive copy of its view.
+    CCAConfigureDuplicateContextForNativeManager(context);
+
     if (!module)
         return;
 
@@ -1524,6 +1554,15 @@ static id CCAInstantiateDuplicateContentModule(NSString *identifier,
     [root addSubview:contentController.view];
 
     [contentController didMoveToParentViewController:self];
+
+    // A duplicated module is a real child controller, not a screenshot. Keep
+    // its lifecycle and interaction state equivalent to a compact native
+    // module.
+    contentController.view.userInteractionEnabled = YES;
+    @try {
+        [contentController beginAppearanceTransition:YES animated:NO];
+        [contentController endAppearanceTransition];
+    } @catch (__unused NSException *exception) {}
 }
 
 - (void)viewDidLayoutSubviews {
@@ -13906,6 +13945,51 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
 
 %end
 
+
+%hook CCUIModuleCollectionViewController
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    if (!gEnabled || !gCCADuplicateFamilies.count) return;
+    UIViewController *overlay = ((UIViewController *)(id)self).parentViewController;
+    while (overlay && !CCAIsOverlayController(overlay)) overlay = overlay.parentViewController;
+    if (!overlay) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!gEnabled || !gCCADuplicateFamilies.count) return;
+        CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+        [coordinator syncOwnedDuplicateModulesForOverlay:overlay];
+        [coordinator layoutOwnedDuplicateModulesForOverlay:overlay];
+        UIView *host = [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
+        if (host) {
+            host.hidden = NO;
+            host.alpha = 1.0;
+            host.layer.opacity = 1.0;
+            host.userInteractionEnabled = YES;
+            [overlay.view bringSubviewToFront:host];
+        }
+    });
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!gEnabled || !gCCADuplicateFamilies.count || gCCAExpandedModuleOpen) return;
+    UIViewController *overlay = ((UIViewController *)(id)self).parentViewController;
+    while (overlay && !CCAIsOverlayController(overlay)) overlay = overlay.parentViewController;
+    if (!overlay) return;
+    CCAsterCoordinator *coordinator = [CCAsterCoordinator shared];
+    [coordinator syncOwnedDuplicateModulesForOverlay:overlay];
+    [coordinator layoutOwnedDuplicateModulesForOverlay:overlay];
+    UIView *host = [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
+    if (host && !gCCAExpandedModuleOpen) {
+        host.hidden = NO;
+        host.alpha = 1.0;
+        host.layer.opacity = 1.0;
+        host.userInteractionEnabled = YES;
+        [overlay.view bringSubviewToFront:host];
+    }
+}
+
+%end
 
 static void CCAResyncPersistentDuplicatesForAllOverlays(void) {
     if (!gEnabled || !gCCADuplicateFamilies.count) return;

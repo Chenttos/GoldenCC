@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>CCAster</string>
+	<string>GoldenCC</string>
 	<key>CFBundleExecutable</key>
 	<string>CCAsterPrefs</string>
 	<key>CFBundleIdentifier</key>

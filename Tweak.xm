@@ -1,3 +1,17 @@
+#import <Foundation/Foundation.h>
+
+extern "C" int __isOSVersionAtLeast(int major, int minor, int patch)
+{
+    NSOperatingSystemVersion version;
+
+    version.majorVersion = major;
+    version.minorVersion = minor;
+    version.patchVersion = patch;
+
+    return [[NSProcessInfo processInfo]
+        isOperatingSystemAtLeastVersion:version];
+}
+
 #import <CoreFoundation/CoreFoundation.h>
 #import <CoreImage/CoreImage.h>
 #import <CFNetwork/CFNetwork.h>
@@ -7,13 +21,6 @@
 #import <math.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
-
-#ifdef __cplusplus
-extern "C" int __isOSVersionAtLeast(int major, int minor, int patch) {
-    NSOperatingSystemVersion version = { major, minor, patch };
-    return [[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion:version];
-}
-#endif
 
 static CFStringRef const kCCAPrefsDomain = CFSTR("com.futur3sn0w.ccaster.preferences");
 static NSString *const kCCAReloadNotification = @"com.futur3sn0w.ccaster/ReloadPrefs";
@@ -1250,122 +1257,281 @@ static BOOL CCARectArraysNearlyEqual(NSArray<NSValue *> *a, NSArray<NSValue *> *
 @interface SBUIPowerDownViewController : UIViewController
 @end
 
-static NSBundle *CCABundleForModuleIdentifier(NSString *identifier) {
-    if (!identifier.length) return nil;
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSArray<NSString *> *roots = @[
-        @"/System/Library/ControlCenter/Bundles",
-        @"/Library/ControlCenter/Bundles",
-        @"/var/jb/Library/ControlCenter/Bundles",
-        @"/var/jb/System/Library/ControlCenter/Bundles"
-    ];
-    for (NSString *root in roots) {
-        NSArray<NSString *> *items = [fm contentsOfDirectoryAtPath:root error:nil];
-        for (NSString *item in items) {
-            if (![item.pathExtension.lowercaseString isEqualToString:@"bundle"]) continue;
-            NSBundle *bundle = [NSBundle bundleWithPath:[root stringByAppendingPathComponent:item]];
-            if ([bundle.bundleIdentifier isEqualToString:identifier]) return bundle;
-        }
-    }
-    return nil;
-}
+@interface CCADuplicateContentModuleContext : NSObject
+@property (nonatomic, copy) NSString *moduleIdentifier;
+@end
+
+@implementation CCADuplicateContentModuleContext
+@end
 
 @interface CCAOwnedDuplicateModuleViewController : UIViewController
 @property (nonatomic, copy) NSString *moduleIdentifier;
 @property (nonatomic, copy) NSString *baseModuleIdentifier;
-@property (nonatomic, strong) id moduleInstance;
-@property (nonatomic, strong) id moduleContext;
+@property (nonatomic, strong) id contentModule;
 @property (nonatomic, strong) UIViewController *contentViewController;
+@property (nonatomic, strong) id contentModuleContext;
 @end
+
+static NSBundle *CCABundleForDuplicateModuleIdentifier(NSString *identifier) {
+    if (!identifier.length) return nil;
+
+    NSArray<NSString *> *directories = @[
+        @"/System/Library/ControlCenter/Bundles",
+        @"/Library/ControlCenter/Bundles",
+        @"/var/jb/Library/ControlCenter/Bundles"
+    ];
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    for (NSString *directory in directories) {
+        NSArray<NSString *> *items =
+            [fm contentsOfDirectoryAtPath:directory error:nil];
+
+        for (NSString *item in items) {
+            if (![item.pathExtension.lowercaseString isEqualToString:@"bundle"])
+                continue;
+
+            NSString *path =
+                [directory stringByAppendingPathComponent:item];
+
+            NSBundle *bundle = [NSBundle bundleWithPath:path];
+            if (!bundle) continue;
+
+            if ([bundle.bundleIdentifier isEqualToString:identifier])
+                return bundle;
+        }
+    }
+
+    return nil;
+}
+
+static id CCAInstantiateDuplicateContentModule(NSString *identifier,
+                                               NSString *baseIdentifier,
+                                               id *outContext) {
+    NSBundle *bundle =
+        CCABundleForDuplicateModuleIdentifier(baseIdentifier);
+
+    if (!bundle) return nil;
+
+    if (!bundle.loaded && ![bundle load])
+        return nil;
+
+    Class principalClass = bundle.principalClass;
+    if (!principalClass) return nil;
+
+    /*
+     * CCUIContentModuleContext is a private runtime object on iOS 16.
+     * Create it dynamically when available. The fallback proxy supplies the
+     * moduleIdentifier property expected by most Control Center modules.
+     */
+    id context = nil;
+
+    Class contextClass =
+        NSClassFromString(@"CCUIContentModuleContext");
+
+    if (contextClass) {
+        SEL initWithIdentifier =
+            NSSelectorFromString(@"initWithModuleIdentifier:");
+
+        if ([contextClass instancesRespondToSelector:initWithIdentifier]) {
+            @try {
+                context =
+                    ((id (*)(id, SEL, id))objc_msgSend)(
+                        [contextClass alloc],
+                        initWithIdentifier,
+                        identifier
+                    );
+            } @catch (__unused NSException *exception) {
+                context = nil;
+            }
+        }
+
+        if (!context) {
+            @try {
+                context = [contextClass new];
+
+                if ([context respondsToSelector:
+                    NSSelectorFromString(@"setModuleIdentifier:")]) {
+
+                    ((void (*)(id, SEL, id))objc_msgSend)(
+                        context,
+                        NSSelectorFromString(@"setModuleIdentifier:"),
+                        identifier
+                    );
+                }
+            } @catch (__unused NSException *exception) {
+                context = nil;
+            }
+        }
+    }
+
+    if (!context) {
+        CCADuplicateContentModuleContext *proxy =
+            [CCADuplicateContentModuleContext new];
+
+        proxy.moduleIdentifier = identifier;
+        context = proxy;
+    }
+
+    if (outContext)
+        *outContext = context;
+
+    /*
+     * Most iOS 16 Control Center bundles expose a principal class implementing
+     * CCUIContentModule and initialize it with:
+     *
+     * initWithContentModuleContext:
+     */
+    SEL designatedInit =
+        NSSelectorFromString(@"initWithContentModuleContext:");
+
+    if ([principalClass instancesRespondToSelector:designatedInit]) {
+        @try {
+            id module =
+                ((id (*)(id, SEL, id))objc_msgSend)(
+                    [principalClass alloc],
+                    designatedInit,
+                    context
+                );
+
+            if (module)
+                return module;
+        } @catch (__unused NSException *exception) {}
+    }
+
+    /*
+     * Some modules expose a plain initializer and create their content
+     * controller later.
+     */
+    @try {
+        id module = [[principalClass alloc] init];
+
+        if (module)
+            return module;
+    } @catch (__unused NSException *exception) {}
+
+    return nil;
+}
 
 @implementation CCAOwnedDuplicateModuleViewController
 @synthesize moduleIdentifier = _moduleIdentifier;
 @synthesize baseModuleIdentifier = _baseModuleIdentifier;
-@synthesize moduleInstance = _moduleInstance;
-@synthesize moduleContext = _moduleContext;
+@synthesize contentModule = _contentModule;
 @synthesize contentViewController = _contentViewController;
+@synthesize contentModuleContext = _contentModuleContext;
 
-- (instancetype)initWithModuleIdentifier:(NSString *)moduleIdentifier baseIdentifier:(NSString *)baseIdentifier {
+- (instancetype)initWithModuleIdentifier:(NSString *)moduleIdentifier
+                            baseIdentifier:(NSString *)baseIdentifier {
     self = [super initWithNibName:nil bundle:nil];
     if (!self) return nil;
+
     _moduleIdentifier = [moduleIdentifier copy];
     _baseModuleIdentifier = [baseIdentifier copy];
+
     return self;
 }
 
 - (void)loadView {
-    UIView *view = [[UIView alloc] initWithFrame:CGRectZero];
-    view.backgroundColor = UIColor.clearColor;
-    view.opaque = NO;
-    view.clipsToBounds = YES;
-    view.layer.cornerCurve = kCACornerCurveContinuous;
-    self.view = view;
+    UIView *root =
+        [[UIView alloc] initWithFrame:CGRectZero];
 
-    NSBundle *bundle = CCABundleForModuleIdentifier(self.baseModuleIdentifier);
-    if (!bundle || !(bundle.isLoaded || [bundle load])) return;
+    root.backgroundColor = UIColor.clearColor;
+    root.opaque = NO;
+    root.clipsToBounds = YES;
+    root.layer.cornerCurve = kCACornerCurveContinuous;
 
-    Class principal = bundle.principalClass;
-    if (!principal) return;
+    self.view = root;
 
     id context = nil;
-    Class contextClass = NSClassFromString(@"CCUIContentModuleContext");
-    if (contextClass) {
-        SEL initSelector = NSSelectorFromString(@"initWithModuleIdentifier:");
-        if ([contextClass instancesRespondToSelector:initSelector]) {
-            @try {
-                context = ((id (*)(id, SEL, id))objc_msgSend)([contextClass alloc], initSelector, self.moduleIdentifier);
-            } @catch (__unused NSException *exception) {}
-        }
-        if (!context) {
-            @try {
-                context = [contextClass new];
-                if ([context respondsToSelector:NSSelectorFromString(@"setModuleIdentifier:")]) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(context, NSSelectorFromString(@"setModuleIdentifier:"), self.moduleIdentifier);
-                }
-            } @catch (__unused NSException *exception) {}
-        }
-    }
 
-    id module = nil;
-    SEL contentInit = NSSelectorFromString(@"initWithContentModuleContext:");
-    if (context && [principal instancesRespondToSelector:contentInit]) {
-        @try {
-            module = ((id (*)(id, SEL, id))objc_msgSend)([principal alloc], contentInit, context);
-        } @catch (__unused NSException *exception) {}
-    }
-    if (!module) {
-        @try { module = [[principal alloc] init]; } @catch (__unused NSException *exception) {}
-    }
-    if (!module) return;
+    id module =
+        CCAInstantiateDuplicateContentModule(
+            self.moduleIdentifier,
+            self.baseModuleIdentifier,
+            &context
+        );
 
-    if (context && [module respondsToSelector:NSSelectorFromString(@"setContentModuleContext:")]) {
-        @try {
-            ((void (*)(id, SEL, id))objc_msgSend)(module, NSSelectorFromString(@"setContentModuleContext:"), context);
-        } @catch (__unused NSException *exception) {}
-    }
+    self.contentModule = module;
+    self.contentModuleContext = context;
 
-    UIViewController *content = nil;
+    if (!module)
+        return;
+
+    /*
+     * A CCUIContentModule may itself be a view controller, or it may expose
+     * contentViewController.
+     */
+    UIViewController *contentController = nil;
+
     if ([module isKindOfClass:[UIViewController class]]) {
-        content = (UIViewController *)module;
-    } else if ([module respondsToSelector:NSSelectorFromString(@"contentViewController")]) {
+        contentController = (UIViewController *)module;
+    }
+
+    if (!contentController &&
+        [module respondsToSelector:
+            NSSelectorFromString(@"contentViewController")]) {
+
         @try {
-            id candidate = ((id (*)(id, SEL))objc_msgSend)(module, NSSelectorFromString(@"contentViewController"));
-            if ([candidate isKindOfClass:[UIViewController class]]) content = candidate;
+            id candidate =
+                ((id (*)(id, SEL))objc_msgSend)(
+                    module,
+                    NSSelectorFromString(@"contentViewController")
+                );
+
+            if ([candidate isKindOfClass:[UIViewController class]])
+                contentController = candidate;
+
         } @catch (__unused NSException *exception) {}
     }
-    if (!content) return;
 
-    self.moduleInstance = module;
-    self.moduleContext = context;
-    self.contentViewController = content;
-    [self addChildViewController:content];
-    content.view.frame = self.view.bounds;
-    content.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:content.view];
-    [content didMoveToParentViewController:self];
+    if (!contentController)
+        return;
+
+    self.contentViewController = contentController;
+
+    /*
+     * Give the real module its duplicate context if it exposes the setter.
+     */
+    SEL setContext =
+        NSSelectorFromString(@"setContentModuleContext:");
+
+    if ([module respondsToSelector:setContext]) {
+        @try {
+            ((void (*)(id, SEL, id))objc_msgSend)(
+                module,
+                setContext,
+                context
+            );
+        } @catch (__unused NSException *exception) {}
+    }
+
+    [self addChildViewController:contentController];
+
+    contentController.view.frame = root.bounds;
+    contentController.view.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
+
+    contentController.view.hidden = NO;
+    contentController.view.alpha = 1.0;
+    contentController.view.layer.opacity = 1.0;
+
+    [root addSubview:contentController.view];
+
+    [contentController didMoveToParentViewController:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
+    if (self.contentViewController.view) {
+        self.contentViewController.view.frame =
+            self.view.bounds;
+    }
 }
 
 @end
+
 
 static BOOL CCAPreferenceBool(NSString *key, BOOL fallback) {
     Boolean valid = false;
@@ -1506,14 +1672,23 @@ static NSString *CCADuplicateFamilyIdentifierForIdentifier(NSString *identifier)
     return identifier;
 }
 
-static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier);
-
 static BOOL CCAModuleIdentifierSupportsOwnedDuplicates(NSString *identifier) {
-    NSString *familyIdentifier = CCADuplicateFamilyIdentifierForIdentifier(identifier);
+    if (!identifier.length) return NO;
+
+    NSString *familyIdentifier =
+        CCADuplicateFamilyIdentifierForIdentifier(identifier);
+
     if (!familyIdentifier.length) return NO;
+
+    // Quick Access controls are GoldenCC UI, not CC modules.
+    if ([familyIdentifier hasPrefix:@"GoldenCC.QuickAccess"] ||
+        [familyIdentifier hasPrefix:@"CCA.QuickAccess"]) {
+        return NO;
+    }
+
+    // Do not wrap Apple's own physical instance identifiers.
     if (CCAIdentifierIsLegacyPhysicalDuplicate(familyIdentifier)) return NO;
-    // GoldenCC-owned duplicates are overlay-backed instances. Quick Access
-    // buttons are not module identifiers and never enter this path.
+
     return YES;
 }
 
@@ -4184,18 +4359,29 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         existingHost.userInteractionEnabled = gQuickAccessButtonsEnabled;
         return;
     }
-    // Keep this strictly inside the overlay. The system status-bar superview is
-    // owned above Control Center and survives dismissal, which leaks buttons
-    // onto the Home Screen. Header pocket is overlay-scoped and still carries
-    // the native top-chrome presentation transform.
-    UIView *animationHost = CCAFindSubviewWithClassName(controller.view, @"CCUIHeaderPocketView");
-    if (!animationHost) {
-        @try {
-            id candidate = [(id)controller valueForKey:@"overlayHeaderView"];
-            if ([candidate isKindOfClass:[UIView class]]) animationHost = candidate;
-        } @catch (__unused NSException *exception) {}
+    // Quick Access must stay inside the Control Center overlay, but the native
+    // header pocket is not a stable host on Home-button iPhones. On those
+    // devices its top geometry can start below the area where our controls are
+    // meant to live, causing the buttons to be laid out above the visible
+    // overlay (or behind the pocket) and effectively disappear.
+    //
+    // Use the native header pocket on edge-to-edge devices, where its
+    // presentation transform is reliable. On Home-button devices, anchor the
+    // host directly to the overlay's top edge and account for the safe-area
+    // inset explicitly.
+    UIView *animationHost = nil;
+    BOOL homeButtonLayout = controller.view.safeAreaInsets.top <= 24.0;
+    if (!homeButtonLayout) {
+        animationHost = CCAFindSubviewWithClassName(controller.view, @"CCUIHeaderPocketView");
+        if (!animationHost) {
+            @try {
+                id candidate = [(id)controller valueForKey:@"overlayHeaderView"];
+                if ([candidate isKindOfClass:[UIView class]]) animationHost = candidate;
+            } @catch (__unused NSException *exception) {}
+        }
     }
     if (!animationHost) animationHost = controller.view;
+
     UIView *host = [[CCAQuickAccessHostView alloc] initWithFrame:CGRectZero];
     host.tag = 181000;
     host.backgroundColor = UIColor.clearColor;
@@ -4203,15 +4389,29 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
     host.translatesAutoresizingMaskIntoConstraints = NO;
     [animationHost addSubview:host];
     animationHost.clipsToBounds = NO;
-    CGRect hostFrameInOverlay = [animationHost convertRect:animationHost.bounds toView:controller.view];
-    CGFloat hostOriginY = MAX(CGRectGetMinY(animationHost.frame), CGRectGetMinY(hostFrameInOverlay));
-    CGFloat hostOriginX = MAX(CGRectGetMinX(animationHost.frame), CGRectGetMinX(hostFrameInOverlay));
-    [NSLayoutConstraint activateConstraints:@[
-        [host.topAnchor constraintEqualToAnchor:animationHost.topAnchor constant:-hostOriginY],
-        [host.leadingAnchor constraintEqualToAnchor:animationHost.leadingAnchor constant:-hostOriginX],
-        [host.widthAnchor constraintEqualToConstant:CGRectGetWidth(controller.view.bounds)],
-        [host.heightAnchor constraintEqualToConstant:76.0]
-    ]];
+
+    if (homeButtonLayout) {
+        // The Home-button layout has a real top safe-area inset (~20pt).
+        // Anchor the host to the overlay itself instead of the header pocket.
+        // The controls then occupy the visible chrome rather than y < 0.
+        [NSLayoutConstraint activateConstraints:@[
+            [host.topAnchor constraintEqualToAnchor:controller.view.topAnchor
+                                           constant:controller.view.safeAreaInsets.top],
+            [host.leadingAnchor constraintEqualToAnchor:controller.view.leadingAnchor],
+            [host.widthAnchor constraintEqualToAnchor:controller.view.widthAnchor],
+            [host.heightAnchor constraintEqualToConstant:76.0]
+        ]];
+    } else {
+        CGRect hostFrameInOverlay = [animationHost convertRect:animationHost.bounds toView:controller.view];
+        CGFloat hostOriginY = MAX(CGRectGetMinY(animationHost.frame), CGRectGetMinY(hostFrameInOverlay));
+        CGFloat hostOriginX = MAX(CGRectGetMinX(animationHost.frame), CGRectGetMinX(hostFrameInOverlay));
+        [NSLayoutConstraint activateConstraints:@[
+            [host.topAnchor constraintEqualToAnchor:animationHost.topAnchor constant:-hostOriginY],
+            [host.leadingAnchor constraintEqualToAnchor:animationHost.leadingAnchor constant:-hostOriginX],
+            [host.widthAnchor constraintEqualToConstant:CGRectGetWidth(controller.view.bounds)],
+            [host.heightAnchor constraintEqualToConstant:76.0]
+        ]];
+    }
 
     UIView *materialRoot = controller.view;
     for (UIViewController *module in CCACollectModuleControllers(controller)) {
@@ -4459,9 +4659,6 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
 
 - (void)updateOwnedDuplicateHostForOverlay:(UIViewController *)overlay presentationAlpha:(CGFloat)alpha {
     if (!overlay.view) return;
-    if (gCCAControlCenterPresented && !gCCAExpandedModuleOpen) {
-        [self syncOwnedDuplicateModulesForOverlay:overlay];
-    }
     UIView *host = [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
     if (!host) return;
     CGFloat clamped = MIN(1.0, MAX(0.0, alpha));
@@ -9561,19 +9758,10 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         [self setEditPresentation:editing forOverlay:overlay animated:YES];
         [self updatePageIndicatorsForOverlay:overlay];
         [self updatePagedModuleVisibilityForOverlay:overlay showAdjacent:NO];
-        // Rebuild the GoldenCC-owned duplicate layer on every edit transition.
-        // CCUI may recreate/reparent its native collection while leaving edit
-        // mode; the duplicate instances must be reattached after that pass.
-        [self syncOwnedDuplicateModulesForOverlay:overlay];
-        [self layoutOwnedDuplicateModulesForOverlay:overlay];
         // Sheet presentation/dismissal can run the CC state callbacks while
         // editing is active, leaving the quick-access host hidden with nothing
         // to re-show it. Manage its visibility explicitly on edit transitions.
         [self setQuickAccessButtonsHidden:(editing || gCCAExpandedModuleOpen || !gCCAControlCenterPresented) forOverlay:overlay animated:YES];
-        if (!editing && gCCAControlCenterPresented && !gCCAExpandedModuleOpen) {
-            [self animateOwnedDuplicateHostForOverlay:overlay presented:YES];
-            [self beginOwnedDuplicateHostPresentationSync];
-        }
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.32 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (editTransitionGeneration != gCCAEditTransitionGeneration || gEditModeActive != editing) return;
@@ -9581,13 +9769,14 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         if (!editing) {
             for (UIViewController *overlay in gOverlayControllers.allObjects) {
                 [self setNativeDismissTapGesturesEnabled:YES forOverlay:overlay];
-                if (gCCAControlCenterPresented && !gCCAExpandedModuleOpen) {
-                    [self syncOwnedDuplicateModulesForOverlay:overlay];
-                    [self layoutOwnedDuplicateModulesForOverlay:overlay];
-                    [self animateOwnedDuplicateHostForOverlay:overlay presented:YES];
-                }
             }
         }
+            CCAResyncPersistentDuplicatesForAllOverlays();
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                          (int64_t)(0.38 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                CCAResyncPersistentDuplicatesForAllOverlays();
+            });
     });
 }
 
@@ -9613,6 +9802,8 @@ static NSUInteger CCADerivedVisiblePageForOverlay(UIViewController *overlay) {
         [self updatePagedModuleVisibilityForOverlay:overlay showAdjacent:NO];
         [self setQuickAccessButtonsHidden:!gCCAControlCenterPresented forOverlay:overlay animated:NO];
     }
+
+    CCAResyncPersistentDuplicatesForAllOverlays();
 }
 
 @end
@@ -13710,6 +13901,69 @@ static void CCARestoreCompactMediaLayout(UIViewController *overlay, id sourceObj
 
 %end
 
+
+static void CCAResyncPersistentDuplicatesForAllOverlays(void) {
+    if (!gEnabled || !gCCADuplicateFamilies.count) return;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CCAsterCoordinator *coordinator =
+            [CCAsterCoordinator shared];
+
+        for (UIViewController *overlay
+             in gOverlayControllers.allObjects) {
+
+            if (!overlay.view) continue;
+
+            [coordinator syncOwnedDuplicateModulesForOverlay:overlay];
+            [coordinator layoutOwnedDuplicateModulesForOverlay:overlay];
+
+            UIView *host =
+                [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
+
+            if (host) {
+                host.hidden = NO;
+                host.alpha = 1.0;
+                host.layer.opacity = 1.0;
+
+                [overlay.view bringSubviewToFront:host];
+            }
+        }
+
+        dispatch_after(
+            dispatch_time(DISPATCH_TIME_NOW,
+                          (int64_t)(0.22 * NSEC_PER_SEC)),
+            dispatch_get_main_queue(),
+            ^{
+                if (!gEnabled || !gCCADuplicateFamilies.count)
+                    return;
+
+                CCAsterCoordinator *coordinator2 =
+                    [CCAsterCoordinator shared];
+
+                for (UIViewController *overlay
+                     in gOverlayControllers.allObjects) {
+
+                    if (!overlay.view) continue;
+
+                    [coordinator2 syncOwnedDuplicateModulesForOverlay:overlay];
+                    [coordinator2 layoutOwnedDuplicateModulesForOverlay:overlay];
+
+                    UIView *host =
+                        [overlay.view viewWithTag:kCCAOwnedDuplicateHostTag];
+
+                    if (host) {
+                        host.hidden = NO;
+                        host.alpha = 1.0;
+                        host.layer.opacity = 1.0;
+
+                        [overlay.view bringSubviewToFront:host];
+                    }
+                }
+            }
+        );
+    });
+}
+
 static void CCAPrefsChanged(__unused CFNotificationCenterRef center, __unused void *observer, __unused CFStringRef name, __unused const void *object, __unused CFDictionaryRef userInfo) {
     CCALoadPrefs();
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -13723,6 +13977,8 @@ static void CCAPrefsChanged(__unused CFNotificationCenterRef center, __unused vo
             for (UIViewController *module in CCACollectModuleControllers(overlay)) [coordinator applyRefinedLookToModule:module];
         }
     });
+    CCAResyncPersistentDuplicatesForAllOverlays();
+
 }
 
 %ctor {

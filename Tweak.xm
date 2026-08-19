@@ -71,6 +71,7 @@ static NSHashTable<UIViewController *> *gOverlayControllers;
 // Forward declaration: this helper is used by edit/prefs hooks before its
 // implementation near the end of the file.
 static void CCAResyncPersistentDuplicatesForAllOverlays(void);
+static BOOL CCAIdentifierIsLegacyPhysicalDuplicate(NSString *identifier);
 static BOOL gEditModeActive = NO;
 static BOOL gCCAEditTransitionActive = NO;
 static NSUInteger gCCAEditTransitionGeneration = 0;

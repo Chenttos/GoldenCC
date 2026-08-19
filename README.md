@@ -12,7 +12,7 @@ The project currently focuses on SpringBoard-side Control Center behavior:
 - CCAster's custom add-control sheet
 - paged module placement
 - resize chrome and custom module footprints
-- iOS 16 compatibility around `ControlCenterUIKit` and `ControlCenterServices`
+- iOS 15, 16 and 17 compatibility around `ControlCenterUIKit` and `ControlCenterServices`
 
 This source repository is intentionally separate from the public package feed. Pushing here does not publish a package to the live APT repo or GitHub Pages.
 
@@ -24,7 +24,7 @@ CCAster is a rootless Theos project.
 env CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache SWIFT_MODULE_CACHE_PATH=/tmp/swift-module-cache make clean package FINALPACKAGE=1
 ```
 
-The package is configured for iOS 16:
+The package is configured for iOS 15 all the way up to 17:
 
 - package id: `com.futur3sn0w.ccaster`
 - firmware: `>= 16.0, << 17.0`
